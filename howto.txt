@@ -1,7 +1,51 @@
+SETUP
 cd "C:\Users\sahaa\OneDrive\Desktop\Honors\fusion-revised1"
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install --upgrade pip
 .venv\Scripts\python.exe -m pip install numpy opencv-python
+
+DEFAULT RUN
 .venv\Scripts\python.exe main.py
-.venv\Scripts\python.exe main.py --start 0 --end 5 --no-display --sync-mode filename
-.venv\Scripts\python.exe main.py --save-output --save-dir outputs
+
+HEADLESS TEST RUN
+.venv\Scripts\python.exe main.py --start 0 --end 0 --no-display
+
+SHORT RANGE RUN
+.venv\Scripts\python.exe main.py --start 0 --end 5 --sync-mode filename
+
+SAVE OUTPUT IMAGES
+.venv\Scripts\python.exe main.py --start 0 --end 5 --save-output --save-dir outputs
+
+USE TIMESTAMP SYNC
+.venv\Scripts\python.exe main.py --sync-mode timestamp
+
+ADJUST EVENT THRESHOLD
+.venv\Scripts\python.exe main.py --event-threshold 0.15
+
+DEBUG MODES
+.venv\Scripts\python.exe main.py --debug-mode 0
+.venv\Scripts\python.exe main.py --debug-mode 1
+.venv\Scripts\python.exe main.py --debug-mode 2
+.venv\Scripts\python.exe main.py --debug-mode 3
+
+VIEWER CONTROLS
+n = next frame pair
+p = previous frame pair
+q = quit
+
+WINDOWS
+1. Original LiDAR Projection
+2. Simulated Event Image
+3. Motion-Corrected Projection
+
+PER FRAME CONSOLE OUTPUT
+- number of events
+- percent active pixels
+- mean flow magnitude
+- valid LiDAR points after motion
+
+NOTES
+- The pipeline uses RGB_t and RGB_t+1 to simulate events.
+- LiDAR is projected with the existing validated calibration/projection code.
+- Motion correction moves only the projected image coordinates, not the calibration.
+- Use the project venv Python if your system Python does not have OpenCV installed.

@@ -7,6 +7,9 @@ import cv2
 import numpy as np
 
 from calibration import parse_calib_cam_to_cam, parse_calib_velo_to_cam
+from events import event_confidence, simulate_events
+from flow import compute_rgb_flow
+from lidar_motion import move_lidar_points_weighted
 from loader import load_image, load_lidar
 from main import process_frame
 
@@ -48,6 +51,19 @@ class FrameProjection:
     stats: dict
     valid_mask_input: np.ndarray
     in_frame_mask_cam: np.ndarray
+
+
+@dataclass
+class MotionFramePair:
+    original_t: FrameProjection
+    original_t1: FrameProjection
+    corrected_uv: np.ndarray
+    corrected_uv_int: np.ndarray
+    corrected_depth: np.ndarray
+    corrected_image: np.ndarray
+    events: np.ndarray
+    confidence: np.ndarray
+    flow: np.ndarray
 
 
 class TeeStream:
@@ -293,6 +309,74 @@ def _save_debug_modes(tr_velo_to_cam, r_rect, p_rect, frame_pairs):
         print(f"debug_mode_{mode}_output: {out_path}")
 
 
+def _filter_uv_depth_to_image(uv, depth, image_shape):
+    uv = np.asarray(uv, dtype=np.float32)
+    depth = np.asarray(depth, dtype=np.float32)
+    if uv.size == 0 or depth.size == 0:
+        return (
+            np.empty((0, 2), dtype=np.float32),
+            np.empty((0,), dtype=np.float32),
+            np.empty((0, 2), dtype=np.int32),
+        )
+
+    h, w = image_shape[:2]
+    valid = (
+        np.isfinite(uv[:, 0])
+        & np.isfinite(uv[:, 1])
+        & np.isfinite(depth)
+        & (uv[:, 0] >= 0.0)
+        & (uv[:, 0] < w)
+        & (uv[:, 1] >= 0.0)
+        & (uv[:, 1] < h)
+    )
+
+    uv = uv[valid]
+    depth = depth[valid]
+    if uv.shape[0] == 0:
+        return (
+            np.empty((0, 2), dtype=np.float32),
+            np.empty((0,), dtype=np.float32),
+            np.empty((0, 2), dtype=np.int32),
+        )
+
+    uv_int = np.clip(
+        np.rint(uv).astype(np.int32),
+        [0, 0],
+        [w - 1, h - 1],
+    )
+    return uv, depth, uv_int
+
+
+def _build_motion_frame_pair(frame_t, frame_t1):
+    events = simulate_events(frame_t.image, frame_t1.image)
+    flow = compute_rgb_flow(frame_t.image, frame_t1.image)
+    confidence = event_confidence(events)
+
+    corrected_uv, corrected_depth = move_lidar_points_weighted(
+        frame_t.uv,
+        frame_t.depth,
+        flow,
+        confidence,
+    )
+    corrected_uv, corrected_depth, corrected_uv_int = _filter_uv_depth_to_image(
+        corrected_uv,
+        corrected_depth,
+        frame_t1.image.shape,
+    )
+
+    return MotionFramePair(
+        original_t=frame_t,
+        original_t1=frame_t1,
+        corrected_uv=corrected_uv,
+        corrected_uv_int=corrected_uv_int,
+        corrected_depth=corrected_depth,
+        corrected_image=frame_t1.image,
+        events=events,
+        confidence=confidence,
+        flow=flow,
+    )
+
+
 def _sample_flow_at_points(flow, points):
     if points.size == 0:
         return np.empty((0, 2), dtype=np.float32)
@@ -332,6 +416,29 @@ def _filter_top_quantile(values, quantile):
     return values[values <= cutoff]
 
 
+def _compute_edge_alignment(uv_int, image):
+    _, dist, grad_mag = _distance_transform_from_edges(image)
+    if uv_int.size == 0:
+        return {
+            "mean_px": float("inf"),
+            "median_px": float("inf"),
+            "keep_ratio": 0.0,
+        }
+
+    strong_points = grad_mag[uv_int[:, 1], uv_int[:, 0]] >= EDGE_GRADIENT_THRESHOLD
+    keep_ratio = float(np.mean(strong_points))
+    if not np.any(strong_points):
+        dists = np.empty((0,), dtype=np.float32)
+    else:
+        dists = dist[uv_int[strong_points, 1], uv_int[strong_points, 0]]
+
+    return {
+        "mean_px": float(np.mean(dists)) if dists.size else float("inf"),
+        "median_px": float(np.median(dists)) if dists.size else float("inf"),
+        "keep_ratio": keep_ratio,
+    }
+
+
 def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_STATS_MIN_FRAMES):
     print("\n--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---")
     frame_count = max(5, int(n_frames))
@@ -341,40 +448,18 @@ def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_S
         for image_name, lidar_name in frame_pairs
     ]
 
-    pair_errors = []
+    original_pair_errors = []
+    corrected_pair_errors = []
     baseline_errors = []
 
     for idx in range(len(frames) - 1):
         frame_t = frames[idx]
         frame_t1 = frames[idx + 1]
+        motion_pair = _build_motion_frame_pair(frame_t, frame_t1)
 
-        gray_t = cv2.cvtColor(frame_t.image, cv2.COLOR_BGR2GRAY)
-        gray_t1 = cv2.cvtColor(frame_t1.image, cv2.COLOR_BGR2GRAY)
-
-        flow_fwd = cv2.calcOpticalFlowFarneback(
-            gray_t,
-            gray_t1,
-            None,
-            pyr_scale=0.5,
-            levels=3,
-            winsize=21,
-            iterations=5,
-            poly_n=7,
-            poly_sigma=1.5,
-            flags=0,
-        )
-        flow_bwd = cv2.calcOpticalFlowFarneback(
-            gray_t1,
-            gray_t,
-            None,
-            pyr_scale=0.5,
-            levels=3,
-            winsize=21,
-            iterations=5,
-            poly_n=7,
-            poly_sigma=1.5,
-            flags=0,
-        )
+        flow_fwd = motion_pair.flow
+        flow_bwd = compute_rgb_flow(frame_t1.image, frame_t.image)
+        confidence = motion_pair.confidence
 
         nn_forward_idx, nn_forward_dist = _flann_knn_1nn(frame_t1.uv, frame_t.uv)
         nn_reverse_idx, _ = _flann_knn_1nn(frame_t.uv, frame_t1.uv)
@@ -386,9 +471,11 @@ def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_S
         query_idx = np.arange(frame_t.uv.shape[0], dtype=np.int32)
         mutual = nn_reverse_idx[nn_forward_idx] == query_idx
         distance_ok = nn_forward_dist <= TEMPORAL_STATS_MATCH_MAX_DIST_PX
+        selected_mask = mutual & distance_ok
 
-        matched_uv_t = frame_t.uv[mutual & distance_ok]
-        matched_uv_t1 = frame_t1.uv[nn_forward_idx[mutual & distance_ok]]
+        matched_uv_t = frame_t.uv[selected_mask]
+        matched_uv_t1 = frame_t1.uv[nn_forward_idx[selected_mask]]
+        matched_depth_t = frame_t.depth[selected_mask]
 
         if matched_uv_t.shape[0] == 0:
             print(f"{frame_t.name}->{frame_t1.name}: no_mutual_matches_after_distance_filter")
@@ -404,13 +491,65 @@ def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_S
         matched_uv_t = matched_uv_t[motion_mask]
         lidar_disp = lidar_disp[motion_mask]
         img_disp = img_disp[motion_mask]
+        matched_uv_t1 = matched_uv_t1[motion_mask]
+        matched_depth_t = matched_depth_t[motion_mask]
 
         if matched_uv_t.shape[0] == 0:
             print(f"{frame_t.name}->{frame_t1.name}: no_matches_after_motion_filter")
             continue
 
-        temporal_error = np.linalg.norm(lidar_disp - img_disp, axis=1)
-        temporal_error = _filter_top_quantile(temporal_error, TEMPORAL_STATS_OUTLIER_QUANTILE)
+        original_temporal_error = np.linalg.norm(lidar_disp - img_disp, axis=1)
+
+        h_t1, w_t1 = frame_t1.image.shape[:2]
+        u_idx = np.rint(matched_uv_t[:, 0]).astype(np.int32)
+        v_idx = np.rint(matched_uv_t[:, 1]).astype(np.int32)
+        source_valid = (
+            (u_idx >= 0)
+            & (u_idx < w_t1)
+            & (v_idx >= 0)
+            & (v_idx < h_t1)
+            & np.isfinite(matched_uv_t[:, 0])
+            & np.isfinite(matched_uv_t[:, 1])
+            & np.isfinite(matched_depth_t)
+        )
+
+        matched_uv_t_corr = matched_uv_t[source_valid]
+        matched_uv_t1_corr = matched_uv_t1[source_valid]
+        matched_depth_t_corr = matched_depth_t[source_valid]
+
+        corrected_uv_raw, corrected_depth_raw = move_lidar_points_weighted(
+            matched_uv_t_corr,
+            matched_depth_t_corr,
+            flow_fwd,
+            confidence,
+        )
+        corrected_valid = (
+            np.isfinite(corrected_uv_raw[:, 0])
+            & np.isfinite(corrected_uv_raw[:, 1])
+            & (corrected_uv_raw[:, 0] >= 0.0)
+            & (corrected_uv_raw[:, 0] < w_t1)
+            & (corrected_uv_raw[:, 1] >= 0.0)
+            & (corrected_uv_raw[:, 1] < h_t1)
+        )
+        corrected_uv = corrected_uv_raw[corrected_valid]
+        matched_uv_t1_corrected = matched_uv_t1_corr[corrected_valid]
+
+        if corrected_uv.shape[0] == 0:
+            corrected_temporal_error = np.empty((0,), dtype=np.float32)
+        else:
+            corrected_temporal_error = np.linalg.norm(
+                matched_uv_t1_corrected - corrected_uv,
+                axis=1,
+            )
+
+        original_temporal_error = _filter_top_quantile(
+            original_temporal_error,
+            TEMPORAL_STATS_OUTLIER_QUANTILE,
+        )
+        corrected_temporal_error = _filter_top_quantile(
+            corrected_temporal_error,
+            TEMPORAL_STATS_OUTLIER_QUANTILE,
+        )
 
         flow_at_uv = _sample_flow_at_points(flow_fwd, matched_uv_t)
         warped_uv = matched_uv_t + flow_at_uv
@@ -429,43 +568,61 @@ def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_S
         ]
         self_consistency_error = _filter_top_quantile(self_consistency_error, TEMPORAL_STATS_OUTLIER_QUANTILE)
 
-        pair_errors.append(temporal_error)
+        original_pair_errors.append(original_temporal_error)
+        corrected_pair_errors.append(corrected_temporal_error)
         baseline_errors.append(self_consistency_error)
 
-        pair_mean = float(np.mean(temporal_error)) if temporal_error.size else float("inf")
-        pair_median = float(np.median(temporal_error)) if temporal_error.size else float("inf")
-        pair_std = float(np.std(temporal_error)) if temporal_error.size else float("inf")
+        original_pair_mean = float(np.mean(original_temporal_error)) if original_temporal_error.size else float("inf")
+        original_pair_median = float(np.median(original_temporal_error)) if original_temporal_error.size else float("inf")
+        corrected_pair_mean = float(np.mean(corrected_temporal_error)) if corrected_temporal_error.size else float("inf")
+        corrected_pair_median = float(np.median(corrected_temporal_error)) if corrected_temporal_error.size else float("inf")
         print(
             f"{frame_t.name}->{frame_t1.name}: "
-            f"mean_error_px={pair_mean:.6f} "
-            f"median_error_px={pair_median:.6f} "
-            f"std_error_px={pair_std:.6f} "
-            f"matches={temporal_error.size}"
+            f"original_mean_error_px={original_pair_mean:.6f} "
+            f"original_median_error_px={original_pair_median:.6f} "
+            f"corrected_mean_error_px={corrected_pair_mean:.6f} "
+            f"corrected_median_error_px={corrected_pair_median:.6f} "
+            f"matches={original_temporal_error.size}"
         )
 
-    global_temporal = np.concatenate(pair_errors) if pair_errors else np.empty((0,), dtype=np.float32)
+    global_original_temporal = (
+        np.concatenate(original_pair_errors)
+        if original_pair_errors
+        else np.empty((0,), dtype=np.float32)
+    )
+    global_corrected_temporal = (
+        np.concatenate(corrected_pair_errors)
+        if corrected_pair_errors
+        else np.empty((0,), dtype=np.float32)
+    )
     global_baseline = np.concatenate(baseline_errors) if baseline_errors else np.empty((0,), dtype=np.float32)
 
-    temporal_mean = float(np.mean(global_temporal)) if global_temporal.size else float("inf")
-    temporal_median = float(np.median(global_temporal)) if global_temporal.size else float("inf")
+    original_temporal_mean = float(np.mean(global_original_temporal)) if global_original_temporal.size else float("inf")
+    original_temporal_median = float(np.median(global_original_temporal)) if global_original_temporal.size else float("inf")
+    corrected_temporal_mean = float(np.mean(global_corrected_temporal)) if global_corrected_temporal.size else float("inf")
+    corrected_temporal_median = float(np.median(global_corrected_temporal)) if global_corrected_temporal.size else float("inf")
     baseline_mean = float(np.mean(global_baseline)) if global_baseline.size else float("inf")
     baseline_median = float(np.median(global_baseline)) if global_baseline.size else float("inf")
 
     temporal_statistical = (
-        global_temporal.size > 0
+        global_original_temporal.size > 0
         and global_baseline.size > 0
-        and temporal_mean > baseline_mean * 2.0
-        and temporal_median > baseline_median * 2.0
+        and original_temporal_mean > baseline_mean * 2.0
+        and original_temporal_median > baseline_median * 2.0
     )
 
-    print(f"Temporal inconsistency mean error: {temporal_mean:.6f} px")
-    print(f"Temporal inconsistency median error: {temporal_median:.6f} px")
+    print(f"Original temporal inconsistency mean error: {original_temporal_mean:.6f} px")
+    print(f"Original temporal inconsistency median error: {original_temporal_median:.6f} px")
+    print(f"Corrected temporal inconsistency mean error: {corrected_temporal_mean:.6f} px")
+    print(f"Corrected temporal inconsistency median error: {corrected_temporal_median:.6f} px")
     print(f"Image self-consistency error: {baseline_mean:.6f} px")
     print("Temporal distortion (statistical): " + ("YES" if temporal_statistical else "NO"))
 
     return {
-        "temporal_mean_px": temporal_mean,
-        "temporal_median_px": temporal_median,
+        "original_temporal_mean_px": original_temporal_mean,
+        "original_temporal_median_px": original_temporal_median,
+        "corrected_temporal_mean_px": corrected_temporal_mean,
+        "corrected_temporal_median_px": corrected_temporal_median,
         "baseline_mean_px": baseline_mean,
         "baseline_median_px": baseline_median,
         "detected": temporal_statistical,
@@ -528,36 +685,56 @@ def run_tests():
             distribution_pass = False
 
     print("\n--- TEST 3: EDGE ALIGNMENT ERROR (NUMERICAL) ---")
-    edge_means = []
-    edge_medians = []
-    edge_kept = []
+    corrected_motion_pairs = [
+        _build_motion_frame_pair(traced_frames[idx], traced_frames[idx + 1])
+        for idx in range(len(traced_frames) - 1)
+    ]
+
+    original_edge_means = []
+    original_edge_medians = []
+    original_edge_kept = []
+    corrected_edge_means = []
+    corrected_edge_medians = []
+    corrected_edge_kept = []
+
     for frame in traced_frames:
-        _, dist, grad_mag = _distance_transform_from_edges(frame.image)
-        if frame.uv_int.size == 0:
-            dists = np.array([], dtype=np.float32)
-            keep_ratio = 0.0
-        else:
-            strong_points = grad_mag[frame.uv_int[:, 1], frame.uv_int[:, 0]] >= EDGE_GRADIENT_THRESHOLD
-            keep_ratio = float(np.mean(strong_points))
-            dists = dist[frame.uv_int[strong_points, 1], frame.uv_int[strong_points, 0]] if np.any(strong_points) else np.array([], dtype=np.float32)
-        mean_dist = float(np.mean(dists)) if dists.size else float("inf")
-        median_dist = float(np.median(dists)) if dists.size else float("inf")
-        edge_means.append(mean_dist)
-        edge_medians.append(median_dist)
-        edge_kept.append(keep_ratio)
+        edge_metrics = _compute_edge_alignment(frame.uv_int, frame.image)
+        original_edge_means.append(edge_metrics["mean_px"])
+        original_edge_medians.append(edge_metrics["median_px"])
+        original_edge_kept.append(edge_metrics["keep_ratio"])
         print(
-            f"{frame.name}: median_distance_px={median_dist:.6f} "
-            f"mean_distance_px={mean_dist:.6f} strong_edge_point_ratio={keep_ratio:.6f}"
+            f"{frame.name} original: median_distance_px={edge_metrics['median_px']:.6f} "
+            f"mean_distance_px={edge_metrics['mean_px']:.6f} "
+            f"strong_edge_point_ratio={edge_metrics['keep_ratio']:.6f}"
         )
 
-    edge_mean_global = float(np.mean(edge_means))
-    edge_median_global = float(np.median(edge_medians))
-    edge_keep_global = float(np.mean(edge_kept))
-    print(f"edge_strong_point_ratio_global={edge_keep_global:.6f}")
-    print(f"edge_mean_global_px={edge_mean_global:.6f}")
-    print(f"edge_median_global_px={edge_median_global:.6f}")
-    edge_pass = (edge_median_global < EDGE_MEDIAN_PASS_PX) and (edge_mean_global < EDGE_MEAN_FAIL_PX)
-    edge_fail = edge_mean_global > EDGE_MEAN_FAIL_PX
+    for motion_pair in corrected_motion_pairs:
+        edge_metrics = _compute_edge_alignment(motion_pair.corrected_uv_int, motion_pair.corrected_image)
+        corrected_edge_means.append(edge_metrics["mean_px"])
+        corrected_edge_medians.append(edge_metrics["median_px"])
+        corrected_edge_kept.append(edge_metrics["keep_ratio"])
+        print(
+            f"{motion_pair.original_t.name}->{motion_pair.original_t1.name} corrected: "
+            f"median_distance_px={edge_metrics['median_px']:.6f} "
+            f"mean_distance_px={edge_metrics['mean_px']:.6f} "
+            f"strong_edge_point_ratio={edge_metrics['keep_ratio']:.6f}"
+        )
+
+    original_edge_mean_global = float(np.mean(original_edge_means))
+    original_edge_median_global = float(np.median(original_edge_medians))
+    original_edge_keep_global = float(np.mean(original_edge_kept))
+    corrected_edge_mean_global = float(np.mean(corrected_edge_means)) if corrected_edge_means else float("inf")
+    corrected_edge_median_global = float(np.median(corrected_edge_medians)) if corrected_edge_medians else float("inf")
+    corrected_edge_keep_global = float(np.mean(corrected_edge_kept)) if corrected_edge_kept else 0.0
+
+    print(f"original_edge_strong_point_ratio_global={original_edge_keep_global:.6f}")
+    print(f"original_edge_mean_global_px={original_edge_mean_global:.6f}")
+    print(f"original_edge_median_global_px={original_edge_median_global:.6f}")
+    print(f"corrected_edge_strong_point_ratio_global={corrected_edge_keep_global:.6f}")
+    print(f"corrected_edge_mean_global_px={corrected_edge_mean_global:.6f}")
+    print(f"corrected_edge_median_global_px={corrected_edge_median_global:.6f}")
+    edge_pass = (original_edge_median_global < EDGE_MEDIAN_PASS_PX) and (original_edge_mean_global < EDGE_MEAN_FAIL_PX)
+    edge_fail = original_edge_mean_global > EDGE_MEAN_FAIL_PX
 
     print("\n--- TEST 4: STATIC STRUCTURE CHECK ---")
     static_spreads = []
@@ -672,8 +849,8 @@ def run_tests():
 
     temporal_stats_result = temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect)
     distortion_ratio = (
-        temporal_stats_result["temporal_mean_px"] / temporal_stats_result["baseline_mean_px"]
-        if np.isfinite(temporal_stats_result["temporal_mean_px"])
+        temporal_stats_result["original_temporal_mean_px"] / temporal_stats_result["baseline_mean_px"]
+        if np.isfinite(temporal_stats_result["original_temporal_mean_px"])
         and np.isfinite(temporal_stats_result["baseline_mean_px"])
         and temporal_stats_result["baseline_mean_px"] > 0.0
         else float("inf")
@@ -709,6 +886,37 @@ def run_tests():
     )
     print("Bug detected: " + ("YES" if bug_detected else "NO"))
     print("Ready for research stage: " + ("YES" if ready_for_research else "NO"))
+
+    original_temporal = temporal_stats_result["original_temporal_mean_px"]
+    corrected_temporal = temporal_stats_result["corrected_temporal_mean_px"]
+    original_edge = original_edge_median_global
+    corrected_edge = corrected_edge_median_global
+
+    temporal_improvement = original_temporal - corrected_temporal
+    temporal_improvement_percent = (
+        (temporal_improvement / original_temporal) * 100.0
+        if np.isfinite(original_temporal) and original_temporal != 0.0 and np.isfinite(corrected_temporal)
+        else 0.0
+    )
+    edge_improvement = original_edge - corrected_edge
+
+    print("")
+    print("--- ORIGINAL ---")
+    print(f"Temporal inconsistency: {original_temporal:.6f} px")
+    print(f"Edge median: {original_edge:.6f} px")
+    print("")
+    print("--- CORRECTED ---")
+    print(f"Temporal inconsistency: {corrected_temporal:.6f} px")
+    print(f"Edge median: {corrected_edge:.6f} px")
+    print("")
+    print("--- IMPROVEMENT ---")
+    print(f"Temporal improvement: {temporal_improvement:.6f} px ({temporal_improvement_percent:.2f} %)")
+    print(f"Edge improvement: {edge_improvement:.6f} px")
+    print("")
+    print(
+        "Motion correction effective: "
+        + ("YES" if corrected_temporal < original_temporal else "NO")
+    )
 
 
 if __name__ == "__main__":
