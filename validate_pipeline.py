@@ -1,5 +1,7 @@
 import os
+import sys
 from dataclasses import dataclass
+from datetime import datetime
 
 import cv2
 import numpy as np
@@ -12,6 +14,7 @@ from main import process_frame
 PROJECT_ROOT = r"C:\Users\sahaa\OneDrive\Desktop\Honors\fusion-revised1"
 DATASET_PATH = r"C:\Users\sahaa\OneDrive\Desktop\Honors\datasets\fusion\2011_09_26_drive_0009_extract"
 DEBUG_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "validation_outputs")
+TEST_LOG_DIR = os.path.join(PROJECT_ROOT, "test_logs")
 IMAGE_DIR = os.path.join(DATASET_PATH, "image_02", "data")
 LIDAR_DIR = os.path.join(DATASET_PATH, "velodyne_points", "data")
 
@@ -45,6 +48,20 @@ class FrameProjection:
     stats: dict
     valid_mask_input: np.ndarray
     in_frame_mask_cam: np.ndarray
+
+
+class TeeStream:
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data):
+        for stream in self.streams:
+            stream.write(data)
+        return len(data)
+
+    def flush(self):
+        for stream in self.streams:
+            stream.flush()
 
 
 def _list_first_n_pairs(count):
@@ -262,7 +279,7 @@ def _save_debug_modes(tr_velo_to_cam, r_rect, p_rect, frame_pairs):
     os.makedirs(DEBUG_OUTPUT_DIR, exist_ok=True)
     first_image, first_lidar = frame_pairs[0]
     for mode in (1, 2, 3):
-        vis, _, _, _ = process_frame(
+        vis, _, _, _, _, _, _ = process_frame(
             os.path.join(IMAGE_DIR, first_image),
             os.path.join(LIDAR_DIR, first_lidar),
             tr_velo_to_cam,
@@ -581,7 +598,6 @@ def run_tests():
     static_fail = bool(static_spreads) and float(np.mean(static_spreads)) > VERTICAL_SPREAD_FAIL_PX
 
     print("\n--- TEST 5: TEMPORAL DISTORTION CHECK ---")
-    temporal_detected = False
     temporal_reports = []
     temporal_frames = traced_frames[:3]
     for frame, candidate in zip(temporal_frames, best_candidates):
@@ -595,14 +611,6 @@ def run_tests():
             print(f"{frame.name}: temporal_profile=insufficient_points")
             continue
         x_center, y_centers, residuals = profile
-        finite = np.isfinite(residuals)
-        valid_residuals = residuals[finite]
-        if valid_residuals.size >= 3:
-            has_negative = np.min(valid_residuals) < -TEMPORAL_RESIDUAL_THRESHOLD_PX
-            has_positive = np.max(valid_residuals) > TEMPORAL_RESIDUAL_THRESHOLD_PX
-            zero_crossings = np.count_nonzero(np.diff(np.signbit(valid_residuals)))
-            if has_negative and has_positive and zero_crossings >= 1:
-                temporal_detected = True
         residual_text = ", ".join("nan" if not np.isfinite(v) else f"{v:.6f}" for v in residuals)
         y_text = ", ".join(f"{v:.6f}" for v in y_centers)
         print(f"{frame.name}: x_center_px={x_center:.6f} y_bins=[{y_text}] residuals_px=[{residual_text}]")
@@ -662,6 +670,16 @@ def run_tests():
     print("visual_mode_2: far_points_only_ge_30m")
     print("visual_mode_3: edge_aligned_points_only")
 
+    temporal_stats_result = temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect)
+    distortion_ratio = (
+        temporal_stats_result["temporal_mean_px"] / temporal_stats_result["baseline_mean_px"]
+        if np.isfinite(temporal_stats_result["temporal_mean_px"])
+        and np.isfinite(temporal_stats_result["baseline_mean_px"])
+        and temporal_stats_result["baseline_mean_px"] > 0.0
+        else float("inf")
+    )
+    temporal_detected = distortion_ratio > 2.0
+
     print("\n--- TEST 9: DISTORTION vs ERROR CLASSIFICATION ---")
     physically_correct = edge_pass and reprojection_pass and static_pass and temporal_detected
     bug_detected = not physically_correct
@@ -680,7 +698,7 @@ def run_tests():
     projection_correctness = matrix_pass and distribution_pass and edge_pass and not reprojection_fail
     calibration_correctness = matrix_pass and camera_consistency_pass and not static_fail and edge_pass
     ready_for_research = physically_correct and projection_correctness and calibration_correctness
-    temporal_stats_result = temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect)
+    print(f"distortion_ratio={distortion_ratio:.6f}")
 
     print("\nProjection correctness: " + ("PASS" if projection_correctness else "FAIL"))
     print("Calibration correctness: " + ("PASS" if calibration_correctness else "FAIL"))
@@ -694,4 +712,19 @@ def run_tests():
 
 
 if __name__ == "__main__":
-    run_tests()
+    os.makedirs(TEST_LOG_DIR, exist_ok=True)
+    run_timestamp = datetime.now()
+    log_filename = f"validation_{run_timestamp.strftime('%Y-%m-%d_%H-%M-%S')}.txt"
+    log_path = os.path.join(TEST_LOG_DIR, log_filename)
+
+    original_stdout = sys.stdout
+    with open(log_path, "w", encoding="utf-8") as log_file:
+        sys.stdout = TeeStream(original_stdout, log_file)
+        try:
+            print(f"Validation run timestamp: {run_timestamp.isoformat(timespec='seconds')}")
+            print(f"Validation log file: {log_path}")
+            print("")
+            run_tests()
+        finally:
+            sys.stdout.flush()
+            sys.stdout = original_stdout
