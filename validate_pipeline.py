@@ -8,7 +8,7 @@ import numpy as np
 
 from calibration import parse_calib_cam_to_cam, parse_calib_velo_to_cam
 from events import event_confidence, simulate_events
-from flow import compute_rgb_flow
+from flow import compute_rgb_flow, smooth_flow
 from lidar_motion import move_lidar_points_weighted
 from loader import load_image, load_lidar
 from main import process_frame
@@ -350,9 +350,13 @@ def _filter_uv_depth_to_image(uv, depth, image_shape):
     return uv, depth, uv_int
 
 
-def _build_motion_frame_pair(frame_t, frame_t1):
+def _build_motion_frame_pair(frame_t, frame_t1, prev_flow=None, use_smoothing=False):
     events = simulate_events(frame_t.image, frame_t1.image)
-    flow = compute_rgb_flow(frame_t.image, frame_t1.image)
+    flow_raw = compute_rgb_flow(frame_t.image, frame_t1.image)
+    if use_smoothing:
+        flow = smooth_flow(flow_raw, prev_flow, alpha=0.7)
+    else:
+        flow = np.nan_to_num(flow_raw.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
     confidence = event_confidence(events)
 
     rgb_only_uv, rgb_only_depth = _move_points_with_rgb_flow(
@@ -392,6 +396,22 @@ def _build_motion_frame_pair(frame_t, frame_t1):
         confidence=confidence,
         flow=flow,
     )
+
+
+def _build_motion_frame_pairs(frames, use_smoothing=False):
+    motion_pairs = []
+    prev_flow = None
+    for idx in range(len(frames) - 1):
+        motion_pair = _build_motion_frame_pair(
+            frames[idx],
+            frames[idx + 1],
+            prev_flow=prev_flow,
+            use_smoothing=use_smoothing,
+        )
+        motion_pairs.append(motion_pair)
+        if use_smoothing:
+            prev_flow = motion_pair.flow
+    return motion_pairs
 
 
 def _sample_flow_at_points(flow, points):
@@ -493,14 +513,23 @@ def _compute_edge_alignment(uv_int, image):
     }
 
 
-def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_STATS_MIN_FRAMES):
+def temporal_statistics_test(
+    tr_velo_to_cam,
+    r_rect,
+    p_rect,
+    n_frames=TEMPORAL_STATS_MIN_FRAMES,
+    frames=None,
+    use_smoothing=False,
+):
     print("\n--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---")
-    frame_count = max(5, int(n_frames))
-    frame_pairs = _list_first_n_pairs(frame_count)
-    frames = [
-        _project_with_full_trace(image_name, lidar_name, tr_velo_to_cam, r_rect, p_rect)
-        for image_name, lidar_name in frame_pairs
-    ]
+    if frames is None:
+        frame_count = max(5, int(n_frames))
+        frame_pairs = _list_first_n_pairs(frame_count)
+        frames = [
+            _project_with_full_trace(image_name, lidar_name, tr_velo_to_cam, r_rect, p_rect)
+            for image_name, lidar_name in frame_pairs
+        ]
+    motion_pairs = _build_motion_frame_pairs(frames, use_smoothing=use_smoothing)
 
     original_pair_errors = []
     rgb_only_pair_errors = []
@@ -510,7 +539,7 @@ def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_S
     for idx in range(len(frames) - 1):
         frame_t = frames[idx]
         frame_t1 = frames[idx + 1]
-        motion_pair = _build_motion_frame_pair(frame_t, frame_t1)
+        motion_pair = motion_pairs[idx]
 
         flow_fwd = motion_pair.flow
         flow_bwd = compute_rgb_flow(frame_t1.image, frame_t.image)
@@ -728,6 +757,56 @@ def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_S
     }
 
 
+def _evaluate_mode_metrics(traced_frames, temporal_frames, tr_velo_to_cam, r_rect, p_rect, use_smoothing):
+    edge_frames = traced_frames[:5]
+    motion_pairs = _build_motion_frame_pairs(edge_frames, use_smoothing=use_smoothing)
+
+    original_edge_medians = []
+    rgb_only_edge_medians = []
+    corrected_edge_medians = []
+
+    for frame in edge_frames:
+        edge_metrics = _compute_edge_alignment(frame.uv_int, frame.image)
+        original_edge_medians.append(edge_metrics["median_px"])
+
+    for motion_pair in motion_pairs:
+        rgb_only_metrics = _compute_edge_alignment(motion_pair.rgb_only_uv_int, motion_pair.corrected_image)
+        corrected_metrics = _compute_edge_alignment(motion_pair.corrected_uv_int, motion_pair.corrected_image)
+        rgb_only_edge_medians.append(rgb_only_metrics["median_px"])
+        corrected_edge_medians.append(corrected_metrics["median_px"])
+
+    temporal_stats = temporal_statistics_test(
+        tr_velo_to_cam,
+        r_rect,
+        p_rect,
+        n_frames=len(temporal_frames),
+        frames=temporal_frames,
+        use_smoothing=use_smoothing,
+    )
+
+    distortion_ratio = (
+        temporal_stats["original_temporal_mean_px"] / temporal_stats["baseline_mean_px"]
+        if np.isfinite(temporal_stats["original_temporal_mean_px"])
+        and np.isfinite(temporal_stats["baseline_mean_px"])
+        and temporal_stats["baseline_mean_px"] > 0.0
+        else float("inf")
+    )
+
+    return {
+        "original_temporal_mean_px": temporal_stats["original_temporal_mean_px"],
+        "original_temporal_median_px": temporal_stats["original_temporal_median_px"],
+        "rgb_only_temporal_mean_px": temporal_stats["rgb_only_temporal_mean_px"],
+        "rgb_only_temporal_median_px": temporal_stats["rgb_only_temporal_median_px"],
+        "corrected_temporal_mean_px": temporal_stats["corrected_temporal_mean_px"],
+        "corrected_temporal_median_px": temporal_stats["corrected_temporal_median_px"],
+        "original_edge_median_px": float(np.median(original_edge_medians)) if original_edge_medians else float("inf"),
+        "rgb_only_edge_median_px": float(np.median(rgb_only_edge_medians)) if rgb_only_edge_medians else float("inf"),
+        "corrected_edge_median_px": float(np.median(corrected_edge_medians)) if corrected_edge_medians else float("inf"),
+        "distortion_ratio": distortion_ratio,
+        "detected": temporal_stats["detected"],
+    }
+
+
 def run_tests():
     tr_velo_to_cam = parse_calib_velo_to_cam(os.path.join(DATASET_PATH, "calib_velo_to_cam.txt"))
     r_rect, p_rect = parse_calib_cam_to_cam(os.path.join(DATASET_PATH, "calib_cam_to_cam.txt"), camera_id="02")
@@ -783,11 +862,15 @@ def run_tests():
         if survive_ratio < SURVIVAL_PASS_RATIO:
             distribution_pass = False
 
-    print("\n--- TEST 3: EDGE ALIGNMENT ERROR (NUMERICAL) ---")
-    corrected_motion_pairs = [
-        _build_motion_frame_pair(traced_frames[idx], traced_frames[idx + 1])
-        for idx in range(len(traced_frames) - 1)
+    temporal_frame_count = max(5, int(TEMPORAL_STATS_MIN_FRAMES))
+    temporal_frame_pairs = _list_first_n_pairs(temporal_frame_count)
+    temporal_traced_frames = [
+        _project_with_full_trace(image_name, lidar_name, tr_velo_to_cam, r_rect, p_rect)
+        for image_name, lidar_name in temporal_frame_pairs
     ]
+
+    print("\n--- TEST 3: EDGE ALIGNMENT ERROR (NUMERICAL) ---")
+    corrected_motion_pairs = _build_motion_frame_pairs(traced_frames)
 
     original_edge_means = []
     original_edge_medians = []
@@ -966,14 +1049,23 @@ def run_tests():
     print("visual_mode_2: far_points_only_ge_30m")
     print("visual_mode_3: edge_aligned_points_only")
 
-    temporal_stats_result = temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect)
-    distortion_ratio = (
-        temporal_stats_result["original_temporal_mean_px"] / temporal_stats_result["baseline_mean_px"]
-        if np.isfinite(temporal_stats_result["original_temporal_mean_px"])
-        and np.isfinite(temporal_stats_result["baseline_mean_px"])
-        and temporal_stats_result["baseline_mean_px"] > 0.0
-        else float("inf")
+    no_smoothing_metrics = _evaluate_mode_metrics(
+        traced_frames,
+        temporal_traced_frames,
+        tr_velo_to_cam,
+        r_rect,
+        p_rect,
+        use_smoothing=False,
     )
+    smoothing_metrics = _evaluate_mode_metrics(
+        traced_frames,
+        temporal_traced_frames,
+        tr_velo_to_cam,
+        r_rect,
+        p_rect,
+        use_smoothing=True,
+    )
+    distortion_ratio = no_smoothing_metrics["distortion_ratio"]
     temporal_detected = distortion_ratio > 2.0
 
     print("\n--- TEST 9: DISTORTION vs ERROR CLASSIFICATION ---")
@@ -999,55 +1091,81 @@ def run_tests():
     print("\nProjection correctness: " + ("PASS" if projection_correctness else "FAIL"))
     print("Calibration correctness: " + ("PASS" if calibration_correctness else "FAIL"))
     print("Temporal distortion detected: " + ("YES" if temporal_detected else "NO"))
-    print(
-        "Temporal distortion detected (statistical): "
-        + ("YES" if temporal_stats_result["detected"] else "NO")
-    )
+    print("Temporal distortion detected (statistical): " + ("YES" if no_smoothing_metrics["detected"] else "NO"))
     print("Bug detected: " + ("YES" if bug_detected else "NO"))
     print("Ready for research stage: " + ("YES" if ready_for_research else "NO"))
 
-    original_temporal = temporal_stats_result["original_temporal_mean_px"]
-    rgb_only_temporal = temporal_stats_result["rgb_only_temporal_mean_px"]
-    corrected_temporal = temporal_stats_result["corrected_temporal_mean_px"]
-    original_edge = original_edge_median_global
-    rgb_only_edge = rgb_only_edge_median_global
-    corrected_edge = corrected_edge_median_global
-
-    temporal_improvement = original_temporal - corrected_temporal
-    temporal_improvement_percent = (
-        (temporal_improvement / original_temporal) * 100.0
-        if np.isfinite(original_temporal) and original_temporal != 0.0 and np.isfinite(corrected_temporal)
+    no_smoothing_improvement = no_smoothing_metrics["original_temporal_mean_px"] - no_smoothing_metrics["corrected_temporal_mean_px"]
+    no_smoothing_improvement_percent = (
+        (no_smoothing_improvement / no_smoothing_metrics["original_temporal_mean_px"]) * 100.0
+        if np.isfinite(no_smoothing_metrics["original_temporal_mean_px"])
+        and no_smoothing_metrics["original_temporal_mean_px"] != 0.0
+        and np.isfinite(no_smoothing_metrics["corrected_temporal_mean_px"])
         else 0.0
     )
-    edge_improvement = original_edge - corrected_edge
+    smoothing_improvement = smoothing_metrics["original_temporal_mean_px"] - smoothing_metrics["corrected_temporal_mean_px"]
+    smoothing_improvement_percent = (
+        (smoothing_improvement / smoothing_metrics["original_temporal_mean_px"]) * 100.0
+        if np.isfinite(smoothing_metrics["original_temporal_mean_px"])
+        and smoothing_metrics["original_temporal_mean_px"] != 0.0
+        and np.isfinite(smoothing_metrics["corrected_temporal_mean_px"])
+        else 0.0
+    )
+
+    original_change = no_smoothing_metrics["original_temporal_mean_px"] - smoothing_metrics["original_temporal_mean_px"]
+    rgb_only_change = no_smoothing_metrics["rgb_only_temporal_mean_px"] - smoothing_metrics["rgb_only_temporal_mean_px"]
+    corrected_change = no_smoothing_metrics["corrected_temporal_mean_px"] - smoothing_metrics["corrected_temporal_mean_px"]
 
     print("")
-    print("--- ORIGINAL ---")
-    print(f"Temporal inconsistency: {original_temporal:.6f} px")
-    print(f"Edge median: {original_edge:.6f} px")
+    print("==============================")
+    print("NO SMOOTHING RESULTS")
+    print("====================")
     print("")
-    print("--- CORRECTED ---")
-    print(f"Temporal inconsistency: {corrected_temporal:.6f} px")
-    print(f"Edge median: {corrected_edge:.6f} px")
+    print("Original:")
+    print(f"Temporal inconsistency: {no_smoothing_metrics['original_temporal_mean_px']:.6f} px")
+    print(f"Edge median: {no_smoothing_metrics['original_edge_median_px']:.6f} px")
     print("")
-    print("--- RGB FLOW ONLY ---")
-    print(f"Temporal inconsistency: {rgb_only_temporal:.6f} px")
-    print(f"Edge median: {rgb_only_edge:.6f} px")
+    print("RGB-only:")
+    print(f"Temporal inconsistency: {no_smoothing_metrics['rgb_only_temporal_mean_px']:.6f} px")
     print("")
-    print("--- IMPROVEMENT ---")
-    print(f"Temporal improvement: {temporal_improvement:.6f} px ({temporal_improvement_percent:.2f} %)")
-    print(f"Edge improvement: {edge_improvement:.6f} px")
+    print("Corrected:")
+    print(f"Temporal inconsistency: {no_smoothing_metrics['corrected_temporal_mean_px']:.6f} px")
     print("")
-    print("## Method | Temporal Error | Improvement")
-    print(f"Original | {original_temporal:.6f} | 0")
-    print("Event-only | N/A | N/A")
-    print(f"RGB-only | {rgb_only_temporal:.6f} | {original_temporal - rgb_only_temporal:.6f}")
-    print(f"RGB+Event (final) | {corrected_temporal:.6f} | {original_temporal - corrected_temporal:.6f}")
+    print("Improvement:")
+    print(f"\u0394 = {no_smoothing_improvement:.6f} px ({no_smoothing_improvement_percent:.2f} %)")
     print("")
-    print(
-        "Motion correction effective: "
-        + ("YES" if corrected_temporal < original_temporal else "NO")
-    )
+    print("---")
+    print("")
+    print("==============================")
+    print("WITH SMOOTHING RESULTS")
+    print("======================")
+    print("")
+    print("Original:")
+    print(f"Temporal inconsistency: {smoothing_metrics['original_temporal_mean_px']:.6f} px")
+    print(f"Edge median: {smoothing_metrics['original_edge_median_px']:.6f} px")
+    print("")
+    print("RGB-only:")
+    print(f"Temporal inconsistency: {smoothing_metrics['rgb_only_temporal_mean_px']:.6f} px")
+    print("")
+    print("Corrected:")
+    print(f"Temporal inconsistency: {smoothing_metrics['corrected_temporal_mean_px']:.6f} px")
+    print("")
+    print("Improvement:")
+    print(f"\u0394 = {smoothing_improvement:.6f} px ({smoothing_improvement_percent:.2f} %)")
+    print("")
+    print("---")
+    print("")
+    print("==============================")
+    print("COMPARISON (SMOOTHING EFFECT)")
+    print("=============================")
+    print("")
+    print(f"Original change: {original_change:.6f} px")
+    print(f"RGB-only change: {rgb_only_change:.6f} px")
+    print(f"Corrected change: {corrected_change:.6f} px")
+    print("")
+    print(f"Smoothing benefit (corrected): {corrected_change:.6f} px")
+    print("")
+    print("---")
 
 
 if __name__ == "__main__":
@@ -1055,6 +1173,9 @@ if __name__ == "__main__":
     run_timestamp = datetime.now()
     log_filename = f"validation_{run_timestamp.strftime('%Y-%m-%d_%H-%M-%S')}.txt"
     log_path = os.path.join(TEST_LOG_DIR, log_filename)
+
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     original_stdout = sys.stdout
     with open(log_path, "w", encoding="utf-8") as log_file:

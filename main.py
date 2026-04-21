@@ -6,7 +6,7 @@ import numpy as np
 
 from calibration import parse_calib_cam_to_cam, parse_calib_velo_to_cam
 from events import events_to_image, simulate_events, event_confidence
-from flow import compute_rgb_flow
+from flow import compute_rgb_flow, smooth_flow
 from lidar_motion import move_lidar_points_weighted
 from loader import list_frame_files, load_image, load_lidar
 from projection import overlay_points, project_lidar_to_image
@@ -82,6 +82,7 @@ def process_motion_frame(
     r_rect,
     p_rect,
     max_points,
+    prev_flow=None,
     debug_mode=0,
     event_threshold=0.2,
 ):
@@ -104,7 +105,8 @@ def process_motion_frame(
     event_vis = events_to_image(events)
 
     # --- RGB FLOW ---
-    flow = compute_rgb_flow(image_t, image_t1)
+    flow_raw = compute_rgb_flow(image_t, image_t1)
+    flow = smooth_flow(flow_raw, prev_flow, alpha=0.7)
 
     # --- EVENT CONFIDENCE ---
     conf = event_confidence(events)
@@ -137,6 +139,7 @@ def process_motion_frame(
         "event_vis": event_vis,
         "moved_vis_t1": moved_vis_t1,
         "moved_vis_t": moved_vis_t,
+        "flow": flow,
         "debug": debug,
     }
 
@@ -163,6 +166,7 @@ def run_pipeline(args):
     pairs = list(zip(image_files, lidar_files))
 
     idx = 0
+    prev_flow = None
 
     cv2.namedWindow(DISPLAY_WINDOW_NAME)
     cv2.namedWindow(EVENT_WINDOW_NAME)
@@ -185,9 +189,11 @@ def run_pipeline(args):
             r_rect,
             p_rect,
             max_points=args.max_draw_points,
+            prev_flow=prev_flow,
             debug_mode=args.debug_mode,
             event_threshold=args.event_threshold,
         )
+        prev_flow = result["flow"]
 
         debug = result["debug"]
 

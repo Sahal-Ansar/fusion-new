@@ -68,3 +68,24 @@ def compute_rgb_flow(img1, img2):
         flags=0,
     )
     return np.nan_to_num(flow.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def smooth_flow(flow, prev_flow, alpha=0.7):
+    """
+    Apply exponential moving average smoothing to optical flow.
+
+    flow: current flow (H, W, 2)
+    prev_flow: previous smoothed flow (H, W, 2) or None
+    alpha: smoothing factor
+    """
+    flow = np.nan_to_num(np.asarray(flow, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+
+    if prev_flow is None:
+        return flow
+
+    prev_flow = np.nan_to_num(np.asarray(prev_flow, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+    if flow.shape != prev_flow.shape:
+        return flow
+
+    smoothed = alpha * flow + (1.0 - alpha) * prev_flow
+    return np.nan_to_num(smoothed.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)

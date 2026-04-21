@@ -1,0 +1,214 @@
+Validation run timestamp: 2026-04-22T01:59:56
+Validation log file: C:\Users\sahaa\OneDrive\Desktop\Honors\fusion-revised1\test_logs\validation_2026-04-22_01-59-56.txt
+
+Tr_velo_to_cam (4x4):
+[[ 7.533745e-03 -9.999714e-01 -6.166020e-04 -4.069766e-03]
+ [ 1.480249e-02  7.280733e-04 -9.998902e-01 -7.631618e-02]
+ [ 9.998621e-01  7.523790e-03  1.480755e-02 -2.717806e-01]
+ [ 0.000000e+00  0.000000e+00  0.000000e+00  1.000000e+00]]
+Tr translation (m): tx=-0.004070, ty=-0.076316, tz=-0.271781
+P_rect_02 (3x4):
+[[7.215377e+02 0.000000e+00 6.095593e+02 4.485728e+01]
+ [0.000000e+00 7.215377e+02 1.728540e+02 2.163791e-01]
+ [0.000000e+00 0.000000e+00 1.000000e+00 2.745884e-03]]
+R_rect (4x4):
+[[ 0.9999239   0.00983776 -0.00744505  0.        ]
+ [-0.0098698   0.9999421  -0.00427846  0.        ]
+ [ 0.00740253  0.00435161  0.9999631   0.        ]
+ [ 0.          0.          0.          1.        ]]
+R_rect max deviation from identity: 9.869795e-03
+--- TEST 1: MATRIX VALIDATION ---
+Tr_velo_to_cam:
+[[ 7.533745e-03 -9.999714e-01 -6.166020e-04 -4.069766e-03]
+ [ 1.480249e-02  7.280733e-04 -9.998902e-01 -7.631618e-02]
+ [ 9.998621e-01  7.523790e-03  1.480755e-02 -2.717806e-01]
+ [ 0.000000e+00  0.000000e+00  0.000000e+00  1.000000e+00]]
+R_rect:
+[[ 0.9999239   0.00983776 -0.00744505  0.        ]
+ [-0.0098698   0.9999421  -0.00427846  0.        ]
+ [ 0.00740253  0.00435161  0.9999631   0.        ]
+ [ 0.          0.          0.          1.        ]]
+P_rect:
+[[7.215377e+02 0.000000e+00 6.095593e+02 4.485728e+01]
+ [0.000000e+00 7.215377e+02 1.728540e+02 2.163791e-01]
+ [0.000000e+00 0.000000e+00 1.000000e+00 2.745884e-03]]
+Tr_last_row_ok: True
+Tr_translation_m: [-0.004070, -0.076316, -0.271781]
+Tr_translation_small: True
+R_rect_identity_max_abs_diff: 0.009869795
+P_rect_fx_fy: [721.537700, 721.537700]
+P_rect_cx_cy: [609.559300, 172.854000]
+Image_size_wh: [1392, 512]
+
+--- TEST 2: POINT DISTRIBUTION CHECK ---
+0000000000: input_points=122684 after_cam_filter=58692 after_proj_filter=58692 in_frame=26153 survival_ratio=0.478400
+0000000001: input_points=123085 after_cam_filter=59139 after_proj_filter=59139 in_frame=26215 survival_ratio=0.480473
+0000000002: input_points=122320 after_cam_filter=58258 after_proj_filter=58258 in_frame=25354 survival_ratio=0.476275
+0000000003: input_points=120867 after_cam_filter=57820 after_proj_filter=57820 in_frame=24190 survival_ratio=0.478377
+0000000004: input_points=118963 after_cam_filter=55159 after_proj_filter=55159 in_frame=23706 survival_ratio=0.463665
+
+--- TEST 3: EDGE ALIGNMENT ERROR (NUMERICAL) ---
+0000000000 original: median_distance_px=1.369300 mean_distance_px=5.295892 strong_edge_point_ratio=0.357856
+0000000001 original: median_distance_px=0.955000 mean_distance_px=3.633660 strong_edge_point_ratio=0.345070
+0000000002 original: median_distance_px=1.369300 mean_distance_px=3.475345 strong_edge_point_ratio=0.340025
+0000000003 original: median_distance_px=0.955000 mean_distance_px=3.073602 strong_edge_point_ratio=0.353204
+0000000004 original: median_distance_px=0.955000 mean_distance_px=2.770568 strong_edge_point_ratio=0.371172
+0000000000->0000000001 rgb_only: median_distance_px=0.955000 mean_distance_px=3.869319 strong_edge_point_ratio=0.353403
+0000000000->0000000001 corrected: median_distance_px=0.955000 mean_distance_px=3.969228 strong_edge_point_ratio=0.351548
+0000000001->0000000002 rgb_only: median_distance_px=0.955000 mean_distance_px=3.261433 strong_edge_point_ratio=0.334634
+0000000001->0000000002 corrected: median_distance_px=0.955000 mean_distance_px=3.333070 strong_edge_point_ratio=0.336906
+0000000002->0000000003 rgb_only: median_distance_px=0.955000 mean_distance_px=2.894655 strong_edge_point_ratio=0.331140
+0000000002->0000000003 corrected: median_distance_px=0.955000 mean_distance_px=3.006046 strong_edge_point_ratio=0.333293
+0000000003->0000000004 rgb_only: median_distance_px=0.955000 mean_distance_px=2.943469 strong_edge_point_ratio=0.355381
+0000000003->0000000004 corrected: median_distance_px=0.955000 mean_distance_px=2.927235 strong_edge_point_ratio=0.357688
+original_edge_strong_point_ratio_global=0.353465
+original_edge_mean_global_px=3.649813
+original_edge_median_global_px=0.955000
+rgb_only_edge_strong_point_ratio_global=0.343640
+rgb_only_edge_mean_global_px=3.242219
+rgb_only_edge_median_global_px=0.955000
+corrected_edge_strong_point_ratio_global=0.344859
+corrected_edge_mean_global_px=3.308895
+corrected_edge_median_global_px=0.955000
+
+--- TEST 4: STATIC STRUCTURE CHECK ---
+0000000000: vertical_points=50 spread_px=3.503425 tilt_dxdy=-0.008410 vertical_span_px=91.658783 x_mid=1080.500000
+0000000001: vertical_points=48 spread_px=3.268860 tilt_dxdy=0.026356 vertical_span_px=60.824776 x_mid=1077.000000
+0000000002: vertical_points=37 spread_px=3.285384 tilt_dxdy=-0.017318 vertical_span_px=45.115189 x_mid=1100.000000
+static_spread_mean_px=3.352556
+static_tilt_mean_abs=0.017362
+
+--- TEST 5: TEMPORAL DISTORTION CHECK ---
+0000000000: x_center_px=1080.437744 y_bins=[324.573944, 344.765762, 363.912689, 377.786316, 402.652084] residuals_px=[0.040771, 1.251343, -0.667542, -0.620361, -0.733276]
+0000000001: x_center_px=1078.063293 y_bins=[131.226288, 147.656090, 157.117126, 169.117035, 182.131371] residuals_px=[-2.336914, 0.243591, -0.566956, 0.903748, 0.908325]
+0000000002: x_center_px=1099.913086 y_bins=[132.895691, 137.829056, 146.452209, 157.075523, 169.779373] residuals_px=[0.783325, 0.730347, -0.574646, 0.327942, -0.762329]
+
+--- TEST 6: REPROJECTION CONSISTENCY ---
+0000000000: reprojection_rmse_m=2.171232990020e-15
+0000000001: reprojection_rmse_m=2.194628663483e-15
+0000000002: reprojection_rmse_m=2.341225232166e-15
+reprojection_rmse_global_m=2.235695628556e-15
+
+--- TEST 7: CAMERA CONSISTENCY ---
+P_rect_02 (3x4):
+[[7.215377e+02 0.000000e+00 6.095593e+02 4.485728e+01]
+ [0.000000e+00 7.215377e+02 1.728540e+02 2.163791e-01]
+ [0.000000e+00 0.000000e+00 1.000000e+00 2.745884e-03]]
+R_rect (4x4):
+[[ 0.9999239   0.00983776 -0.00744505  0.        ]
+ [-0.0098698   0.9999421  -0.00427846  0.        ]
+ [ 0.00740253  0.00435161  0.9999631   0.        ]
+ [ 0.          0.          0.          1.        ]]
+R_rect max deviation from identity: 9.869795e-03
+P_rect_03 (3x4):
+[[ 7.215377e+02  0.000000e+00  6.095593e+02 -3.395242e+02]
+ [ 0.000000e+00  7.215377e+02  1.728540e+02  2.199936e+00]
+ [ 0.000000e+00  0.000000e+00  1.000000e+00  2.729905e-03]]
+R_rect (4x4):
+[[ 0.9999239   0.00983776 -0.00744505  0.        ]
+ [-0.0098698   0.9999421  -0.00427846  0.        ]
+ [ 0.00740253  0.00435161  0.9999631   0.        ]
+ [ 0.          0.          0.          1.        ]]
+R_rect max deviation from identity: 9.869795e-03
+image_02_exists: True
+P_rect_02_used: True
+P_rect_03_mismatch_confirmed: True
+
+--- TEST 8: VISUAL MODES ---
+debug_mode_1_output: C:\Users\sahaa\OneDrive\Desktop\Honors\fusion-revised1\validation_outputs\debug_mode_1_0000000000.png
+debug_mode_2_output: C:\Users\sahaa\OneDrive\Desktop\Honors\fusion-revised1\validation_outputs\debug_mode_2_0000000000.png
+debug_mode_3_output: C:\Users\sahaa\OneDrive\Desktop\Honors\fusion-revised1\validation_outputs\debug_mode_3_0000000000.png
+visual_mode_1: near_points_only_lt_30m
+visual_mode_2: far_points_only_ge_30m
+visual_mode_3: edge_aligned_points_only
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+0000000000->0000000001: original_mean_error_px=14.867318 original_median_error_px=12.763479 rgb_only_mean_error_px=14.731695 rgb_only_median_error_px=12.630220 corrected_mean_error_px=7.440479 corrected_median_error_px=1.980851 matches=9747
+0000000001->0000000002: original_mean_error_px=11.138412 original_median_error_px=9.337486 rgb_only_mean_error_px=10.991334 rgb_only_median_error_px=9.176086 corrected_mean_error_px=6.120773 corrected_median_error_px=2.631864 matches=3964
+0000000002->0000000003: original_mean_error_px=9.144071 original_median_error_px=6.261167 rgb_only_mean_error_px=8.996303 rgb_only_median_error_px=6.216934 corrected_mean_error_px=6.718298 corrected_median_error_px=3.864786 matches=1434
+0000000003->0000000004: original_mean_error_px=9.624522 original_median_error_px=7.598500 rgb_only_mean_error_px=9.589777 rgb_only_median_error_px=7.520988 corrected_mean_error_px=6.301198 corrected_median_error_px=3.883916 matches=2650
+0000000004->0000000005: original_mean_error_px=10.408161 original_median_error_px=10.260500 rgb_only_mean_error_px=10.387081 rgb_only_median_error_px=10.208443 corrected_mean_error_px=7.644160 corrected_median_error_px=6.352728 matches=1929
+Original temporal inconsistency mean error: 12.561314 px
+Original temporal inconsistency median error: 10.649099 px
+RGB-only temporal inconsistency mean error: 12.444448 px
+RGB-only temporal inconsistency median error: 10.531917 px
+Corrected temporal inconsistency mean error: 6.990717 px
+Corrected temporal inconsistency median error: 3.097123 px
+Image self-consistency error: 2.716642 px
+Temporal distortion (statistical): YES
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+0000000000->0000000001: original_mean_error_px=14.869776 original_median_error_px=12.768828 rgb_only_mean_error_px=14.734458 rgb_only_median_error_px=12.638668 corrected_mean_error_px=7.443276 corrected_median_error_px=1.982742 matches=9748
+0000000001->0000000002: original_mean_error_px=10.059243 original_median_error_px=8.550621 rgb_only_mean_error_px=9.963560 rgb_only_median_error_px=8.415743 corrected_mean_error_px=5.590386 corrected_median_error_px=2.587966 matches=4350
+0000000002->0000000003: original_mean_error_px=8.149686 original_median_error_px=5.673428 rgb_only_mean_error_px=8.033944 rgb_only_median_error_px=5.628717 corrected_mean_error_px=5.809127 corrected_median_error_px=3.408237 matches=1582
+0000000003->0000000004: original_mean_error_px=8.672050 original_median_error_px=6.848251 rgb_only_mean_error_px=8.621428 rgb_only_median_error_px=6.751410 corrected_mean_error_px=5.728166 corrected_median_error_px=3.310055 matches=2795
+0000000004->0000000005: original_mean_error_px=9.663898 original_median_error_px=9.260249 rgb_only_mean_error_px=9.654650 rgb_only_median_error_px=9.275571 corrected_mean_error_px=7.052354 corrected_median_error_px=5.822062 matches=2025
+Original temporal inconsistency mean error: 11.971164 px
+Original temporal inconsistency median error: 10.010517 px
+RGB-only temporal inconsistency mean error: 11.865561 px
+RGB-only temporal inconsistency median error: 9.903378 px
+Corrected temporal inconsistency mean error: 6.652343 px
+Corrected temporal inconsistency median error: 2.852869 px
+Image self-consistency error: 3.284431 px
+Temporal distortion (statistical): YES
+
+--- TEST 9: DISTORTION vs ERROR CLASSIFICATION ---
+classification: PHYSICALLY_CORRECT_LIDAR_TEMPORAL_DISTORTION
+distortion_ratio=4.623839
+
+Projection correctness: PASS
+Calibration correctness: PASS
+Temporal distortion detected: YES
+Temporal distortion detected (statistical): YES
+Bug detected: NO
+Ready for research stage: YES
+
+==============================
+NO SMOOTHING RESULTS
+====================
+
+Original:
+Temporal inconsistency: 12.561314 px
+Edge median: 0.955000 px
+
+RGB-only:
+Temporal inconsistency: 12.444448 px
+
+Corrected:
+Temporal inconsistency: 6.990717 px
+
+Improvement:
+Δ = 5.570597 px (44.35 %)
+
+---
+
+==============================
+WITH SMOOTHING RESULTS
+======================
+
+Original:
+Temporal inconsistency: 11.971164 px
+Edge median: 0.955000 px
+
+RGB-only:
+Temporal inconsistency: 11.865561 px
+
+Corrected:
+Temporal inconsistency: 6.652343 px
+
+Improvement:
+Δ = 5.318821 px (44.43 %)
+
+---
+
+==============================
+COMPARISON (SMOOTHING EFFECT)
+=============================
+
+Original change: 0.590150 px
+RGB-only change: 0.578887 px
+Corrected change: 0.338374 px
+
+Smoothing benefit (corrected): 0.338374 px
+
+---
