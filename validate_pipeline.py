@@ -57,6 +57,9 @@ class FrameProjection:
 class MotionFramePair:
     original_t: FrameProjection
     original_t1: FrameProjection
+    rgb_only_uv: np.ndarray
+    rgb_only_uv_int: np.ndarray
+    rgb_only_depth: np.ndarray
     corrected_uv: np.ndarray
     corrected_uv_int: np.ndarray
     corrected_depth: np.ndarray
@@ -352,6 +355,17 @@ def _build_motion_frame_pair(frame_t, frame_t1):
     flow = compute_rgb_flow(frame_t.image, frame_t1.image)
     confidence = event_confidence(events)
 
+    rgb_only_uv, rgb_only_depth = _move_points_with_rgb_flow(
+        frame_t.uv,
+        frame_t.depth,
+        flow,
+    )
+    rgb_only_uv, rgb_only_depth, rgb_only_uv_int = _filter_uv_depth_to_image(
+        rgb_only_uv,
+        rgb_only_depth,
+        frame_t1.image.shape,
+    )
+
     corrected_uv, corrected_depth = move_lidar_points_weighted(
         frame_t.uv,
         frame_t.depth,
@@ -367,6 +381,9 @@ def _build_motion_frame_pair(frame_t, frame_t1):
     return MotionFramePair(
         original_t=frame_t,
         original_t1=frame_t1,
+        rgb_only_uv=rgb_only_uv,
+        rgb_only_uv_int=rgb_only_uv_int,
+        rgb_only_depth=rgb_only_depth,
         corrected_uv=corrected_uv,
         corrected_uv_int=corrected_uv_int,
         corrected_depth=corrected_depth,
@@ -391,6 +408,43 @@ def _sample_flow_at_points(flow, points):
         borderValue=0,
     )
     return sampled.reshape(-1, 2)
+
+
+def _move_points_with_rgb_flow(uv, depth, flow):
+    uv = np.asarray(uv, dtype=np.float32)
+    depth = np.asarray(depth, dtype=np.float32)
+    flow = np.asarray(flow, dtype=np.float32)
+
+    if uv.size == 0 or depth.size == 0 or flow.ndim != 3 or flow.shape[2] != 2:
+        return np.empty((0, 2), dtype=np.float32), np.empty((0,), dtype=np.float32)
+
+    h, w = flow.shape[:2]
+    u = uv[:, 0]
+    v = uv[:, 1]
+    u_idx = np.rint(u).astype(np.int32)
+    v_idx = np.rint(v).astype(np.int32)
+
+    valid = (
+        np.isfinite(u)
+        & np.isfinite(v)
+        & np.isfinite(depth)
+        & (u_idx >= 0)
+        & (u_idx < w)
+        & (v_idx >= 0)
+        & (v_idx < h)
+    )
+
+    if not np.any(valid):
+        return np.empty((0, 2), dtype=np.float32), np.empty((0,), dtype=np.float32)
+
+    uv_valid = uv[valid]
+    depth_valid = depth[valid]
+    sampled_flow = flow[v_idx[valid], u_idx[valid], :]
+    uv_rgb = uv_valid.copy()
+    uv_rgb[:, 0] += sampled_flow[:, 0]
+    uv_rgb[:, 1] += sampled_flow[:, 1]
+    uv_rgb = np.nan_to_num(uv_rgb.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+    return uv_rgb, depth_valid
 
 
 def _flann_knn_1nn(train_points, query_points):
@@ -449,6 +503,7 @@ def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_S
     ]
 
     original_pair_errors = []
+    rgb_only_pair_errors = []
     corrected_pair_errors = []
     baseline_errors = []
 
@@ -517,6 +572,30 @@ def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_S
         matched_uv_t1_corr = matched_uv_t1[source_valid]
         matched_depth_t_corr = matched_depth_t[source_valid]
 
+        rgb_only_uv_raw, rgb_only_depth_raw = _move_points_with_rgb_flow(
+            matched_uv_t_corr,
+            matched_depth_t_corr,
+            flow_fwd,
+        )
+        rgb_only_valid = (
+            np.isfinite(rgb_only_uv_raw[:, 0])
+            & np.isfinite(rgb_only_uv_raw[:, 1])
+            & (rgb_only_uv_raw[:, 0] >= 0.0)
+            & (rgb_only_uv_raw[:, 0] < w_t1)
+            & (rgb_only_uv_raw[:, 1] >= 0.0)
+            & (rgb_only_uv_raw[:, 1] < h_t1)
+        )
+        rgb_only_uv = rgb_only_uv_raw[rgb_only_valid]
+        matched_uv_t1_rgb_only = matched_uv_t1_corr[rgb_only_valid]
+
+        if rgb_only_uv.shape[0] == 0:
+            rgb_only_temporal_error = np.empty((0,), dtype=np.float32)
+        else:
+            rgb_only_temporal_error = np.linalg.norm(
+                matched_uv_t1_rgb_only - rgb_only_uv,
+                axis=1,
+            )
+
         corrected_uv_raw, corrected_depth_raw = move_lidar_points_weighted(
             matched_uv_t_corr,
             matched_depth_t_corr,
@@ -546,6 +625,10 @@ def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_S
             original_temporal_error,
             TEMPORAL_STATS_OUTLIER_QUANTILE,
         )
+        rgb_only_temporal_error = _filter_top_quantile(
+            rgb_only_temporal_error,
+            TEMPORAL_STATS_OUTLIER_QUANTILE,
+        )
         corrected_temporal_error = _filter_top_quantile(
             corrected_temporal_error,
             TEMPORAL_STATS_OUTLIER_QUANTILE,
@@ -569,17 +652,22 @@ def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_S
         self_consistency_error = _filter_top_quantile(self_consistency_error, TEMPORAL_STATS_OUTLIER_QUANTILE)
 
         original_pair_errors.append(original_temporal_error)
+        rgb_only_pair_errors.append(rgb_only_temporal_error)
         corrected_pair_errors.append(corrected_temporal_error)
         baseline_errors.append(self_consistency_error)
 
         original_pair_mean = float(np.mean(original_temporal_error)) if original_temporal_error.size else float("inf")
         original_pair_median = float(np.median(original_temporal_error)) if original_temporal_error.size else float("inf")
+        rgb_only_pair_mean = float(np.mean(rgb_only_temporal_error)) if rgb_only_temporal_error.size else float("inf")
+        rgb_only_pair_median = float(np.median(rgb_only_temporal_error)) if rgb_only_temporal_error.size else float("inf")
         corrected_pair_mean = float(np.mean(corrected_temporal_error)) if corrected_temporal_error.size else float("inf")
         corrected_pair_median = float(np.median(corrected_temporal_error)) if corrected_temporal_error.size else float("inf")
         print(
             f"{frame_t.name}->{frame_t1.name}: "
             f"original_mean_error_px={original_pair_mean:.6f} "
             f"original_median_error_px={original_pair_median:.6f} "
+            f"rgb_only_mean_error_px={rgb_only_pair_mean:.6f} "
+            f"rgb_only_median_error_px={rgb_only_pair_median:.6f} "
             f"corrected_mean_error_px={corrected_pair_mean:.6f} "
             f"corrected_median_error_px={corrected_pair_median:.6f} "
             f"matches={original_temporal_error.size}"
@@ -588,6 +676,11 @@ def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_S
     global_original_temporal = (
         np.concatenate(original_pair_errors)
         if original_pair_errors
+        else np.empty((0,), dtype=np.float32)
+    )
+    global_rgb_only_temporal = (
+        np.concatenate(rgb_only_pair_errors)
+        if rgb_only_pair_errors
         else np.empty((0,), dtype=np.float32)
     )
     global_corrected_temporal = (
@@ -599,6 +692,8 @@ def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_S
 
     original_temporal_mean = float(np.mean(global_original_temporal)) if global_original_temporal.size else float("inf")
     original_temporal_median = float(np.median(global_original_temporal)) if global_original_temporal.size else float("inf")
+    rgb_only_temporal_mean = float(np.mean(global_rgb_only_temporal)) if global_rgb_only_temporal.size else float("inf")
+    rgb_only_temporal_median = float(np.median(global_rgb_only_temporal)) if global_rgb_only_temporal.size else float("inf")
     corrected_temporal_mean = float(np.mean(global_corrected_temporal)) if global_corrected_temporal.size else float("inf")
     corrected_temporal_median = float(np.median(global_corrected_temporal)) if global_corrected_temporal.size else float("inf")
     baseline_mean = float(np.mean(global_baseline)) if global_baseline.size else float("inf")
@@ -613,6 +708,8 @@ def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_S
 
     print(f"Original temporal inconsistency mean error: {original_temporal_mean:.6f} px")
     print(f"Original temporal inconsistency median error: {original_temporal_median:.6f} px")
+    print(f"RGB-only temporal inconsistency mean error: {rgb_only_temporal_mean:.6f} px")
+    print(f"RGB-only temporal inconsistency median error: {rgb_only_temporal_median:.6f} px")
     print(f"Corrected temporal inconsistency mean error: {corrected_temporal_mean:.6f} px")
     print(f"Corrected temporal inconsistency median error: {corrected_temporal_median:.6f} px")
     print(f"Image self-consistency error: {baseline_mean:.6f} px")
@@ -621,6 +718,8 @@ def temporal_statistics_test(tr_velo_to_cam, r_rect, p_rect, n_frames=TEMPORAL_S
     return {
         "original_temporal_mean_px": original_temporal_mean,
         "original_temporal_median_px": original_temporal_median,
+        "rgb_only_temporal_mean_px": rgb_only_temporal_mean,
+        "rgb_only_temporal_median_px": rgb_only_temporal_median,
         "corrected_temporal_mean_px": corrected_temporal_mean,
         "corrected_temporal_median_px": corrected_temporal_median,
         "baseline_mean_px": baseline_mean,
@@ -693,6 +792,9 @@ def run_tests():
     original_edge_means = []
     original_edge_medians = []
     original_edge_kept = []
+    rgb_only_edge_means = []
+    rgb_only_edge_medians = []
+    rgb_only_edge_kept = []
     corrected_edge_means = []
     corrected_edge_medians = []
     corrected_edge_kept = []
@@ -709,6 +811,17 @@ def run_tests():
         )
 
     for motion_pair in corrected_motion_pairs:
+        rgb_only_metrics = _compute_edge_alignment(motion_pair.rgb_only_uv_int, motion_pair.corrected_image)
+        rgb_only_edge_means.append(rgb_only_metrics["mean_px"])
+        rgb_only_edge_medians.append(rgb_only_metrics["median_px"])
+        rgb_only_edge_kept.append(rgb_only_metrics["keep_ratio"])
+        print(
+            f"{motion_pair.original_t.name}->{motion_pair.original_t1.name} rgb_only: "
+            f"median_distance_px={rgb_only_metrics['median_px']:.6f} "
+            f"mean_distance_px={rgb_only_metrics['mean_px']:.6f} "
+            f"strong_edge_point_ratio={rgb_only_metrics['keep_ratio']:.6f}"
+        )
+
         edge_metrics = _compute_edge_alignment(motion_pair.corrected_uv_int, motion_pair.corrected_image)
         corrected_edge_means.append(edge_metrics["mean_px"])
         corrected_edge_medians.append(edge_metrics["median_px"])
@@ -723,6 +836,9 @@ def run_tests():
     original_edge_mean_global = float(np.mean(original_edge_means))
     original_edge_median_global = float(np.median(original_edge_medians))
     original_edge_keep_global = float(np.mean(original_edge_kept))
+    rgb_only_edge_mean_global = float(np.mean(rgb_only_edge_means)) if rgb_only_edge_means else float("inf")
+    rgb_only_edge_median_global = float(np.median(rgb_only_edge_medians)) if rgb_only_edge_medians else float("inf")
+    rgb_only_edge_keep_global = float(np.mean(rgb_only_edge_kept)) if rgb_only_edge_kept else 0.0
     corrected_edge_mean_global = float(np.mean(corrected_edge_means)) if corrected_edge_means else float("inf")
     corrected_edge_median_global = float(np.median(corrected_edge_medians)) if corrected_edge_medians else float("inf")
     corrected_edge_keep_global = float(np.mean(corrected_edge_kept)) if corrected_edge_kept else 0.0
@@ -730,6 +846,9 @@ def run_tests():
     print(f"original_edge_strong_point_ratio_global={original_edge_keep_global:.6f}")
     print(f"original_edge_mean_global_px={original_edge_mean_global:.6f}")
     print(f"original_edge_median_global_px={original_edge_median_global:.6f}")
+    print(f"rgb_only_edge_strong_point_ratio_global={rgb_only_edge_keep_global:.6f}")
+    print(f"rgb_only_edge_mean_global_px={rgb_only_edge_mean_global:.6f}")
+    print(f"rgb_only_edge_median_global_px={rgb_only_edge_median_global:.6f}")
     print(f"corrected_edge_strong_point_ratio_global={corrected_edge_keep_global:.6f}")
     print(f"corrected_edge_mean_global_px={corrected_edge_mean_global:.6f}")
     print(f"corrected_edge_median_global_px={corrected_edge_median_global:.6f}")
@@ -888,8 +1007,10 @@ def run_tests():
     print("Ready for research stage: " + ("YES" if ready_for_research else "NO"))
 
     original_temporal = temporal_stats_result["original_temporal_mean_px"]
+    rgb_only_temporal = temporal_stats_result["rgb_only_temporal_mean_px"]
     corrected_temporal = temporal_stats_result["corrected_temporal_mean_px"]
     original_edge = original_edge_median_global
+    rgb_only_edge = rgb_only_edge_median_global
     corrected_edge = corrected_edge_median_global
 
     temporal_improvement = original_temporal - corrected_temporal
@@ -909,9 +1030,19 @@ def run_tests():
     print(f"Temporal inconsistency: {corrected_temporal:.6f} px")
     print(f"Edge median: {corrected_edge:.6f} px")
     print("")
+    print("--- RGB FLOW ONLY ---")
+    print(f"Temporal inconsistency: {rgb_only_temporal:.6f} px")
+    print(f"Edge median: {rgb_only_edge:.6f} px")
+    print("")
     print("--- IMPROVEMENT ---")
     print(f"Temporal improvement: {temporal_improvement:.6f} px ({temporal_improvement_percent:.2f} %)")
     print(f"Edge improvement: {edge_improvement:.6f} px")
+    print("")
+    print("## Method | Temporal Error | Improvement")
+    print(f"Original | {original_temporal:.6f} | 0")
+    print("Event-only | N/A | N/A")
+    print(f"RGB-only | {rgb_only_temporal:.6f} | {original_temporal - rgb_only_temporal:.6f}")
+    print(f"RGB+Event (final) | {corrected_temporal:.6f} | {original_temporal - corrected_temporal:.6f}")
     print("")
     print(
         "Motion correction effective: "
