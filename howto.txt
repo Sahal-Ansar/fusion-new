@@ -1,0 +1,7 @@
+cd "C:\Users\sahaa\OneDrive\Desktop\Honors\fusion-revised1"
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install --upgrade pip
+.venv\Scripts\python.exe -m pip install numpy opencv-python
+.venv\Scripts\python.exe main.py
+.venv\Scripts\python.exe main.py --start 0 --end 5 --no-display --sync-mode filename
+.venv\Scripts\python.exe main.py --save-output --save-dir outputs
