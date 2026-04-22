@@ -1,0 +1,286 @@
+Tr_velo_to_cam (4x4):
+[[ 7.533745e-03 -9.999714e-01 -6.166020e-04 -4.069766e-03]
+ [ 1.480249e-02  7.280733e-04 -9.998902e-01 -7.631618e-02]
+ [ 9.998621e-01  7.523790e-03  1.480755e-02 -2.717806e-01]
+ [ 0.000000e+00  0.000000e+00  0.000000e+00  1.000000e+00]]
+Tr translation (m): tx=-0.004070, ty=-0.076316, tz=-0.271781
+P_rect_02 (3x4):
+[[7.215377e+02 0.000000e+00 6.095593e+02 4.485728e+01]
+ [0.000000e+00 7.215377e+02 1.728540e+02 2.163791e-01]
+ [0.000000e+00 0.000000e+00 1.000000e+00 2.745884e-03]]
+R_rect (4x4):
+[[ 0.9999239   0.00983776 -0.00744505  0.        ]
+ [-0.0098698   0.9999421  -0.00427846  0.        ]
+ [ 0.00740253  0.00435161  0.9999631   0.        ]
+ [ 0.          0.          0.          1.        ]]
+R_rect max deviation from identity: 9.869795e-03
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+0000000000->0000000001: original_mean_error_px=11.225198 original_median_error_px=11.006332 rgb_only_mean_error_px=11.222422 rgb_only_median_error_px=10.987301 corrected_mean_error_px=9.223766 corrected_median_error_px=7.689707 matches=1046
+0000000001->0000000002: original_mean_error_px=13.347836 original_median_error_px=12.363791 rgb_only_mean_error_px=13.185053 rgb_only_median_error_px=12.222869 corrected_mean_error_px=9.531291 corrected_median_error_px=6.057171 matches=2005
+0000000002->0000000003: original_mean_error_px=10.083517 original_median_error_px=8.926653 rgb_only_mean_error_px=10.075894 rgb_only_median_error_px=8.958362 corrected_mean_error_px=8.081392 corrected_median_error_px=6.687631 matches=1509
+0000000003->0000000004: original_mean_error_px=17.656767 original_median_error_px=15.047110 rgb_only_mean_error_px=16.522387 rgb_only_median_error_px=14.234166 corrected_mean_error_px=9.045996 corrected_median_error_px=2.353093 matches=3928
+0000000004->0000000005: original_mean_error_px=20.508327 original_median_error_px=18.396305 rgb_only_mean_error_px=18.566013 rgb_only_median_error_px=17.128279 corrected_mean_error_px=10.664347 corrected_median_error_px=4.481071 matches=2974
+Original temporal inconsistency mean error: 16.058937 px
+Original temporal inconsistency median error: 12.861717 px
+RGB-only temporal inconsistency mean error: 15.068895 px
+RGB-only temporal inconsistency median error: 12.287197 px
+Corrected temporal inconsistency mean error: 9.430808 px
+Corrected temporal inconsistency median error: 4.850219 px
+Image self-consistency error: 2.302111 px
+Temporal distortion (statistical): YES
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+0000000000->0000000001: original_mean_error_px=11.226613 original_median_error_px=10.996926 rgb_only_mean_error_px=11.221632 rgb_only_median_error_px=10.979369 corrected_mean_error_px=9.212757 corrected_median_error_px=7.585004 matches=1035
+0000000001->0000000002: original_mean_error_px=12.023211 original_median_error_px=11.279608 rgb_only_mean_error_px=11.956621 rgb_only_median_error_px=11.268726 corrected_mean_error_px=8.699603 corrected_median_error_px=5.737360 matches=2017
+0000000002->0000000003: original_mean_error_px=10.774928 original_median_error_px=10.727152 rgb_only_mean_error_px=10.781276 rgb_only_median_error_px=10.727598 corrected_mean_error_px=8.754926 corrected_median_error_px=8.423965 matches=1578
+0000000003->0000000004: original_mean_error_px=16.325983 original_median_error_px=13.327807 rgb_only_mean_error_px=15.318955 rgb_only_median_error_px=12.157051 corrected_mean_error_px=8.265007 corrected_median_error_px=2.333585 matches=4068
+0000000004->0000000005: original_mean_error_px=18.687450 original_median_error_px=16.337547 rgb_only_mean_error_px=16.845827 rgb_only_median_error_px=15.064623 corrected_mean_error_px=9.595700 corrected_median_error_px=3.906291 matches=3126
+Original temporal inconsistency mean error: 15.029118 px
+Original temporal inconsistency median error: 12.204266 px
+RGB-only temporal inconsistency mean error: 14.133750 px
+RGB-only temporal inconsistency median error: 11.749910 px
+Corrected temporal inconsistency mean error: 8.835772 px
+Corrected temporal inconsistency median error: 4.671004 px
+Image self-consistency error: 3.117560 px
+Temporal distortion (statistical): YES
+==============================
+DATASET: 2011_09_26_drive_0009_sync
+=======================
+
+--- NO SMOOTHING ---
+Original: 16.058937 px
+RGB-only: 15.068895 px
+Corrected: 9.430808 px
+Improvement: 6.628129 px (41.27 %)
+
+--- WITH SMOOTHING ---
+Original: 15.029118 px
+RGB-only: 14.133750 px
+Corrected: 8.835772 px
+Improvement: 6.193346 px (41.21 %)
+
+--- SMOOTHING EFFECT ---
+Original change: 1.029819 px
+RGB-only change: 0.935145 px
+Corrected change: 0.595037 px
+
+Tr_velo_to_cam (4x4):
+[[ 7.533745e-03 -9.999714e-01 -6.166020e-04 -4.069766e-03]
+ [ 1.480249e-02  7.280733e-04 -9.998902e-01 -7.631618e-02]
+ [ 9.998621e-01  7.523790e-03  1.480755e-02 -2.717806e-01]
+ [ 0.000000e+00  0.000000e+00  0.000000e+00  1.000000e+00]]
+Tr translation (m): tx=-0.004070, ty=-0.076316, tz=-0.271781
+P_rect_02 (3x4):
+[[7.215377e+02 0.000000e+00 6.095593e+02 4.485728e+01]
+ [0.000000e+00 7.215377e+02 1.728540e+02 2.163791e-01]
+ [0.000000e+00 0.000000e+00 1.000000e+00 2.745884e-03]]
+R_rect (4x4):
+[[ 0.9999239   0.00983776 -0.00744505  0.        ]
+ [-0.0098698   0.9999421  -0.00427846  0.        ]
+ [ 0.00740253  0.00435161  0.9999631   0.        ]
+ [ 0.          0.          0.          1.        ]]
+R_rect max deviation from identity: 9.869795e-03
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+0000000000->0000000001: original_mean_error_px=10.532566 original_median_error_px=9.410516 rgb_only_mean_error_px=10.265390 rgb_only_median_error_px=9.257674 corrected_mean_error_px=4.538443 corrected_median_error_px=1.344169 matches=7624
+0000000001->0000000002: original_mean_error_px=9.984239 original_median_error_px=9.241176 rgb_only_mean_error_px=9.832698 rgb_only_median_error_px=9.161608 corrected_mean_error_px=4.871778 corrected_median_error_px=1.440792 matches=7871
+0000000002->0000000003: original_mean_error_px=9.036709 original_median_error_px=8.756836 rgb_only_mean_error_px=8.997725 rgb_only_median_error_px=8.739008 corrected_mean_error_px=4.466570 corrected_median_error_px=1.458658 matches=5112
+0000000003->0000000004: original_mean_error_px=8.747908 original_median_error_px=8.533501 rgb_only_mean_error_px=8.625843 rgb_only_median_error_px=8.486359 corrected_mean_error_px=5.565512 corrected_median_error_px=2.002191 matches=1427
+0000000004->0000000005: original_mean_error_px=9.827714 original_median_error_px=9.211476 rgb_only_mean_error_px=9.702559 rgb_only_median_error_px=9.199310 corrected_mean_error_px=5.729300 corrected_median_error_px=1.965838 matches=1426
+Original temporal inconsistency mean error: 9.871247 px
+Original temporal inconsistency median error: 9.111705 px
+RGB-only temporal inconsistency mean error: 9.708422 px
+RGB-only temporal inconsistency median error: 9.014949 px
+Corrected temporal inconsistency mean error: 4.768969 px
+Corrected temporal inconsistency median error: 1.442714 px
+Image self-consistency error: 0.721005 px
+Temporal distortion (statistical): YES
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+0000000000->0000000001: original_mean_error_px=10.532665 original_median_error_px=9.410516 rgb_only_mean_error_px=10.265516 rgb_only_median_error_px=9.257674 corrected_mean_error_px=4.546486 corrected_median_error_px=1.344718 matches=7638
+0000000001->0000000002: original_mean_error_px=9.586536 original_median_error_px=8.611843 rgb_only_mean_error_px=9.461671 rgb_only_median_error_px=8.520723 corrected_mean_error_px=4.605248 corrected_median_error_px=1.445708 matches=7850
+0000000002->0000000003: original_mean_error_px=8.760371 original_median_error_px=8.457201 rgb_only_mean_error_px=8.730818 rgb_only_median_error_px=8.420380 corrected_mean_error_px=4.277566 corrected_median_error_px=1.448799 matches=5203
+0000000003->0000000004: original_mean_error_px=8.344974 original_median_error_px=8.248580 rgb_only_mean_error_px=8.284758 rgb_only_median_error_px=8.223928 corrected_mean_error_px=5.367703 corrected_median_error_px=2.030767 matches=1421
+0000000004->0000000005: original_mean_error_px=9.193480 original_median_error_px=8.747054 rgb_only_mean_error_px=9.088874 rgb_only_median_error_px=8.706030 corrected_mean_error_px=5.421725 corrected_median_error_px=1.938516 matches=1426
+Original temporal inconsistency mean error: 9.612164 px
+Original temporal inconsistency median error: 8.728647 px
+RGB-only temporal inconsistency mean error: 9.465262 px
+RGB-only temporal inconsistency median error: 8.656239 px
+Corrected temporal inconsistency mean error: 4.608860 px
+Corrected temporal inconsistency median error: 1.441937 px
+Image self-consistency error: 1.445598 px
+Temporal distortion (statistical): YES
+==============================
+DATASET: 2011_09_26_drive_0005_sync
+=======================
+
+--- NO SMOOTHING ---
+Original: 9.871247 px
+RGB-only: 9.708422 px
+Corrected: 4.768969 px
+Improvement: 5.102279 px (51.69 %)
+
+--- WITH SMOOTHING ---
+Original: 9.612164 px
+RGB-only: 9.465262 px
+Corrected: 4.608860 px
+Improvement: 5.003304 px (52.05 %)
+
+--- SMOOTHING EFFECT ---
+Original change: 0.259083 px
+RGB-only change: 0.243159 px
+Corrected change: 0.160108 px
+
+Tr_velo_to_cam (4x4):
+[[ 7.533745e-03 -9.999714e-01 -6.166020e-04 -4.069766e-03]
+ [ 1.480249e-02  7.280733e-04 -9.998902e-01 -7.631618e-02]
+ [ 9.998621e-01  7.523790e-03  1.480755e-02 -2.717806e-01]
+ [ 0.000000e+00  0.000000e+00  0.000000e+00  1.000000e+00]]
+Tr translation (m): tx=-0.004070, ty=-0.076316, tz=-0.271781
+P_rect_02 (3x4):
+[[7.215377e+02 0.000000e+00 6.095593e+02 4.485728e+01]
+ [0.000000e+00 7.215377e+02 1.728540e+02 2.163791e-01]
+ [0.000000e+00 0.000000e+00 1.000000e+00 2.745884e-03]]
+R_rect (4x4):
+[[ 0.9999239   0.00983776 -0.00744505  0.        ]
+ [-0.0098698   0.9999421  -0.00427846  0.        ]
+ [ 0.00740253  0.00435161  0.9999631   0.        ]
+ [ 0.          0.          0.          1.        ]]
+R_rect max deviation from identity: 9.869795e-03
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+0000000000->0000000001: original_mean_error_px=10.586570 original_median_error_px=9.552177 rgb_only_mean_error_px=10.479936 rgb_only_median_error_px=9.478974 corrected_mean_error_px=5.492335 corrected_median_error_px=1.602125 matches=7423
+0000000001->0000000002: original_mean_error_px=13.181561 original_median_error_px=10.869271 rgb_only_mean_error_px=13.031634 rgb_only_median_error_px=10.755993 corrected_mean_error_px=7.519645 corrected_median_error_px=1.792738 matches=7695
+0000000002->0000000003: original_mean_error_px=17.594360 original_median_error_px=13.815542 rgb_only_mean_error_px=16.537554 rgb_only_median_error_px=13.325684 corrected_mean_error_px=10.736219 corrected_median_error_px=5.024736 matches=3972
+0000000003->0000000004: original_mean_error_px=11.128847 original_median_error_px=10.088917 rgb_only_mean_error_px=11.002281 rgb_only_median_error_px=10.005380 corrected_mean_error_px=6.442513 corrected_median_error_px=2.422149 matches=6708
+0000000004->0000000005: original_mean_error_px=15.942626 original_median_error_px=13.878469 rgb_only_mean_error_px=15.289124 rgb_only_median_error_px=13.290455 corrected_mean_error_px=9.117817 corrected_median_error_px=2.594509 matches=5159
+Original temporal inconsistency mean error: 13.140852 px
+Original temporal inconsistency median error: 11.047899 px
+RGB-only temporal inconsistency mean error: 12.772913 px
+RGB-only temporal inconsistency median error: 10.794027 px
+Corrected temporal inconsistency mean error: 7.461819 px
+Corrected temporal inconsistency median error: 1.902633 px
+Image self-consistency error: 2.126623 px
+Temporal distortion (statistical): YES
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+0000000000->0000000001: original_mean_error_px=10.589099 original_median_error_px=9.552048 rgb_only_mean_error_px=10.480894 rgb_only_median_error_px=9.475610 corrected_mean_error_px=5.496428 corrected_median_error_px=1.602855 matches=7426
+0000000001->0000000002: original_mean_error_px=11.767096 original_median_error_px=9.848148 rgb_only_mean_error_px=11.654568 rgb_only_median_error_px=9.754826 corrected_mean_error_px=6.649128 corrected_median_error_px=1.748418 matches=7853
+0000000002->0000000003: original_mean_error_px=15.620883 original_median_error_px=12.461939 rgb_only_mean_error_px=15.057527 rgb_only_median_error_px=12.135586 corrected_mean_error_px=9.748351 corrected_median_error_px=3.767862 matches=4037
+0000000003->0000000004: original_mean_error_px=11.437934 original_median_error_px=11.004528 rgb_only_mean_error_px=11.381914 rgb_only_median_error_px=10.886495 corrected_mean_error_px=6.657139 corrected_median_error_px=2.345808 matches=6808
+0000000004->0000000005: original_mean_error_px=14.450489 original_median_error_px=13.056917 rgb_only_mean_error_px=14.157619 rgb_only_median_error_px=12.607641 corrected_mean_error_px=8.376695 corrected_median_error_px=2.667935 matches=5180
+Original temporal inconsistency mean error: 12.357084 px
+Original temporal inconsistency median error: 10.714863 px
+RGB-only temporal inconsistency mean error: 12.151908 px
+RGB-only temporal inconsistency median error: 10.555167 px
+Corrected temporal inconsistency mean error: 7.053126 px
+Corrected temporal inconsistency median error: 1.840467 px
+Image self-consistency error: 3.320125 px
+Temporal distortion (statistical): YES
+==============================
+DATASET: 2011_09_26_drive_0013_sync
+=======================
+
+--- NO SMOOTHING ---
+Original: 13.140852 px
+RGB-only: 12.772913 px
+Corrected: 7.461819 px
+Improvement: 5.679033 px (43.22 %)
+
+--- WITH SMOOTHING ---
+Original: 12.357084 px
+RGB-only: 12.151908 px
+Corrected: 7.053126 px
+Improvement: 5.303958 px (42.92 %)
+
+--- SMOOTHING EFFECT ---
+Original change: 0.783768 px
+RGB-only change: 0.621005 px
+Corrected change: 0.408693 px
+
+Tr_velo_to_cam (4x4):
+[[ 7.533745e-03 -9.999714e-01 -6.166020e-04 -4.069766e-03]
+ [ 1.480249e-02  7.280733e-04 -9.998902e-01 -7.631618e-02]
+ [ 9.998621e-01  7.523790e-03  1.480755e-02 -2.717806e-01]
+ [ 0.000000e+00  0.000000e+00  0.000000e+00  1.000000e+00]]
+Tr translation (m): tx=-0.004070, ty=-0.076316, tz=-0.271781
+P_rect_02 (3x4):
+[[7.215377e+02 0.000000e+00 6.095593e+02 4.485728e+01]
+ [0.000000e+00 7.215377e+02 1.728540e+02 2.163791e-01]
+ [0.000000e+00 0.000000e+00 1.000000e+00 2.745884e-03]]
+R_rect (4x4):
+[[ 0.9999239   0.00983776 -0.00744505  0.        ]
+ [-0.0098698   0.9999421  -0.00427846  0.        ]
+ [ 0.00740253  0.00435161  0.9999631   0.        ]
+ [ 0.          0.          0.          1.        ]]
+R_rect max deviation from identity: 9.869795e-03
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+0000000000->0000000001: original_mean_error_px=5.902467 original_median_error_px=5.635071 rgb_only_mean_error_px=5.894336 rgb_only_median_error_px=5.601335 corrected_mean_error_px=4.612935 corrected_median_error_px=4.124450 matches=1194
+0000000001->0000000002: original_mean_error_px=8.496634 original_median_error_px=8.209144 rgb_only_mean_error_px=8.495173 rgb_only_median_error_px=8.191924 corrected_mean_error_px=6.541232 corrected_median_error_px=5.449552 matches=1019
+0000000002->0000000003: original_mean_error_px=6.415946 original_median_error_px=5.516294 rgb_only_mean_error_px=6.415107 rgb_only_median_error_px=5.530641 corrected_mean_error_px=4.300485 corrected_median_error_px=2.352796 matches=1683
+0000000003->0000000004: original_mean_error_px=7.466572 original_median_error_px=5.909937 rgb_only_mean_error_px=7.475111 rgb_only_median_error_px=5.930639 corrected_mean_error_px=4.396302 corrected_median_error_px=2.004281 matches=1604
+0000000004->0000000005: original_mean_error_px=7.442804 original_median_error_px=6.536291 rgb_only_mean_error_px=7.438616 rgb_only_median_error_px=6.510389 corrected_mean_error_px=5.056004 corrected_median_error_px=2.926099 matches=1260
+Original temporal inconsistency mean error: 7.079581 px
+Original temporal inconsistency median error: 6.196918 px
+RGB-only temporal inconsistency mean error: 7.079268 px
+RGB-only temporal inconsistency median error: 6.192408 px
+Corrected temporal inconsistency mean error: 4.856905 px
+Corrected temporal inconsistency median error: 3.006947 px
+Image self-consistency error: 1.865813 px
+Temporal distortion (statistical): YES
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+0000000000->0000000001: original_mean_error_px=5.898042 original_median_error_px=5.620482 rgb_only_mean_error_px=5.890213 rgb_only_median_error_px=5.573601 corrected_mean_error_px=4.621012 corrected_median_error_px=4.125379 matches=1190
+0000000001->0000000002: original_mean_error_px=6.810153 original_median_error_px=6.636599 rgb_only_mean_error_px=6.810052 rgb_only_median_error_px=6.555555 corrected_mean_error_px=5.327002 corrected_median_error_px=4.744356 matches=1059
+0000000002->0000000003: original_mean_error_px=5.059155 original_median_error_px=4.214698 rgb_only_mean_error_px=5.057558 rgb_only_median_error_px=4.206454 corrected_mean_error_px=3.339677 corrected_median_error_px=1.788498 matches=1927
+0000000003->0000000004: original_mean_error_px=5.950090 original_median_error_px=4.889709 rgb_only_mean_error_px=5.952552 rgb_only_median_error_px=4.898838 corrected_mean_error_px=3.618428 corrected_median_error_px=1.758471 matches=1715
+0000000004->0000000005: original_mean_error_px=5.422905 original_median_error_px=4.772897 rgb_only_mean_error_px=5.419939 rgb_only_median_error_px=4.773558 corrected_mean_error_px=3.669590 corrected_median_error_px=1.847150 matches=1459
+Original temporal inconsistency mean error: 5.727352 px
+Original temporal inconsistency median error: 5.026940 px
+RGB-only temporal inconsistency mean error: 5.725649 px
+RGB-only temporal inconsistency median error: 5.009904 px
+Corrected temporal inconsistency mean error: 3.964150 px
+Corrected temporal inconsistency median error: 2.147022 px
+Image self-consistency error: 2.749154 px
+Temporal distortion (statistical): YES
+==============================
+DATASET: 2011_09_26_drive_0017_sync
+=======================
+
+--- NO SMOOTHING ---
+Original: 7.079581 px
+RGB-only: 7.079268 px
+Corrected: 4.856905 px
+Improvement: 2.222677 px (31.40 %)
+
+--- WITH SMOOTHING ---
+Original: 5.727352 px
+RGB-only: 5.725649 px
+Corrected: 3.964150 px
+Improvement: 1.763202 px (30.79 %)
+
+--- SMOOTHING EFFECT ---
+Original change: 1.352229 px
+RGB-only change: 1.353619 px
+Corrected change: 0.892755 px
+
+==============================
+FINAL AGGREGATED RESULTS
+========================
+
+NO SMOOTHING:
+Avg Original: 11.537654 px
+Avg Corrected: 6.629625 px
+Avg Improvement: 41.89 %
+
+WITH SMOOTHING:
+Avg Original: 10.681430 px
+Avg Corrected: 6.115477 px
+Avg Improvement: 41.74 %
+
+---
+
+Best dataset improvement: 51.69 %
+Worst dataset improvement: 31.40 %

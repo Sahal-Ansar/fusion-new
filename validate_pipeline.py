@@ -15,11 +15,15 @@ from main import process_frame
 
 
 PROJECT_ROOT = r"C:\Users\sahaa\OneDrive\Desktop\Honors\fusion-revised1"
-DATASET_PATH = r"C:\Users\sahaa\OneDrive\Desktop\Honors\datasets\fusion\2011_09_26_drive_0009_extract"
 DEBUG_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "validation_outputs")
 TEST_LOG_DIR = os.path.join(PROJECT_ROOT, "test_logs")
-IMAGE_DIR = os.path.join(DATASET_PATH, "image_02", "data")
-LIDAR_DIR = os.path.join(DATASET_PATH, "velodyne_points", "data")
+DATASETS = [
+    r"C:\Users\sahaa\OneDrive\Desktop\Honors\datasets\fusion\2011_09_26_drive_0009_sync",
+    r"C:\Users\sahaa\OneDrive\Desktop\Honors\datasets\fusion\2011_09_26_drive_0005_sync",
+    r"C:\Users\sahaa\OneDrive\Desktop\Honors\datasets\fusion\2011_09_26_drive_0013_sync",
+    r"C:\Users\sahaa\OneDrive\Desktop\Honors\datasets\fusion\2011_09_26_drive_0017_sync",
+]
+DATASET_PATH = DATASETS[0]
 
 EDGE_MEAN_PASS_PX = 5.0
 EDGE_MEAN_FAIL_PX = 10.0
@@ -35,6 +39,8 @@ TEMPORAL_STATS_MIN_FRAMES = 6
 TEMPORAL_STATS_MIN_MOTION_PX = 1.0
 TEMPORAL_STATS_MATCH_MAX_DIST_PX = 25.0
 TEMPORAL_STATS_OUTLIER_QUANTILE = 95.0
+EDGE_VALIDATION_FRAMES = 5
+TEMPORAL_VALIDATION_FRAMES = max(EDGE_VALIDATION_FRAMES, int(TEMPORAL_STATS_MIN_FRAMES))
 
 
 @dataclass
@@ -84,18 +90,22 @@ class TeeStream:
 
 
 def _list_first_n_pairs(count):
-    image_files = sorted([f for f in os.listdir(IMAGE_DIR) if f.endswith(".png")])
-    lidar_files = sorted([f for f in os.listdir(LIDAR_DIR) if f.endswith(".bin")])
+    image_dir = os.path.join(DATASET_PATH, "image_02", "data")
+    lidar_dir = os.path.join(DATASET_PATH, "velodyne_points", "data")
+    image_files = sorted([f for f in os.listdir(image_dir) if f.endswith(".png")])
+    lidar_files = sorted([f for f in os.listdir(lidar_dir) if f.endswith(".bin")])
     if not lidar_files:
-        lidar_files = sorted([f for f in os.listdir(LIDAR_DIR) if f.endswith(".txt")])
+        lidar_files = sorted([f for f in os.listdir(lidar_dir) if f.endswith(".txt")])
     if len(image_files) < count or len(lidar_files) < count:
         raise RuntimeError("Insufficient frames for validation")
     return [(image_files[i], lidar_files[i]) for i in range(count)]
 
 
 def _project_with_full_trace(image_name, lidar_name, tr_velo_to_cam, r_rect, p_rect):
-    image_path = os.path.join(IMAGE_DIR, image_name)
-    lidar_path = os.path.join(LIDAR_DIR, lidar_name)
+    image_dir = os.path.join(DATASET_PATH, "image_02", "data")
+    lidar_dir = os.path.join(DATASET_PATH, "velodyne_points", "data")
+    image_path = os.path.join(image_dir, image_name)
+    lidar_path = os.path.join(lidar_dir, lidar_name)
     image = load_image(image_path)
     lidar_xyz = load_lidar(lidar_path)
 
@@ -296,11 +306,13 @@ def _select_tracked_candidates(frames):
 
 def _save_debug_modes(tr_velo_to_cam, r_rect, p_rect, frame_pairs):
     os.makedirs(DEBUG_OUTPUT_DIR, exist_ok=True)
+    image_dir = os.path.join(DATASET_PATH, "image_02", "data")
+    lidar_dir = os.path.join(DATASET_PATH, "velodyne_points", "data")
     first_image, first_lidar = frame_pairs[0]
     for mode in (1, 2, 3):
         vis, _, _, _, _, _, _ = process_frame(
-            os.path.join(IMAGE_DIR, first_image),
-            os.path.join(LIDAR_DIR, first_lidar),
+            os.path.join(image_dir, first_image),
+            os.path.join(lidar_dir, first_lidar),
             tr_velo_to_cam,
             r_rect,
             p_rect,
@@ -807,247 +819,43 @@ def _evaluate_mode_metrics(traced_frames, temporal_frames, tr_velo_to_cam, r_rec
     }
 
 
-def run_tests():
+def _compute_improvement(original_error, corrected_error):
+    improvement_px = original_error - corrected_error
+    improvement_percent = (
+        (improvement_px / original_error) * 100.0
+        if np.isfinite(original_error) and np.isfinite(corrected_error) and original_error != 0.0
+        else 0.0
+    )
+    return improvement_px, improvement_percent
+
+
+def _format_px(value):
+    return f"{value:.6f} px"
+
+
+def _format_percent(value):
+    return f"{value:.2f} %"
+
+
+def run_validation_on_dataset(dataset_path):
+    global DATASET_PATH
+
+    DATASET_PATH = dataset_path
+
     tr_velo_to_cam = parse_calib_velo_to_cam(os.path.join(DATASET_PATH, "calib_velo_to_cam.txt"))
     r_rect, p_rect = parse_calib_cam_to_cam(os.path.join(DATASET_PATH, "calib_cam_to_cam.txt"), camera_id="02")
 
-    print("--- TEST 1: MATRIX VALIDATION ---")
-    print("Tr_velo_to_cam:")
-    print(tr_velo_to_cam)
-    print("R_rect:")
-    print(r_rect)
-    print("P_rect:")
-    print(p_rect)
+    frame_pairs = _list_first_n_pairs(EDGE_VALIDATION_FRAMES)
+    traced_frames = [
+        _project_with_full_trace(image_name, lidar_name, tr_velo_to_cam, r_rect, p_rect)
+        for image_name, lidar_name in frame_pairs
+    ]
 
-    image_sample = load_image(os.path.join(IMAGE_DIR, sorted(os.listdir(IMAGE_DIR))[0]))
-    image_h, image_w = image_sample.shape[:2]
-
-    tr_last_row_ok = np.allclose(tr_velo_to_cam[3], np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float64))
-    tr_translation = tr_velo_to_cam[:3, 3]
-    tr_translation_small = np.all(np.abs(tr_translation) < 2.0)
-    rect_identity_delta = float(np.max(np.abs(r_rect[:3, :3] - np.eye(3, dtype=np.float64))))
-    fx = float(p_rect[0, 0])
-    fy = float(p_rect[1, 1])
-    cx = float(p_rect[0, 2])
-    cy = float(p_rect[1, 2])
-    focal_ok = 700.0 <= fx <= 1200.0 and 700.0 <= fy <= 1200.0
-    center_ok = 0.0 <= cx <= image_w and 0.0 <= cy <= image_h
-
-    print(f"Tr_last_row_ok: {tr_last_row_ok}")
-    print(f"Tr_translation_m: [{tr_translation[0]:.6f}, {tr_translation[1]:.6f}, {tr_translation[2]:.6f}]")
-    print(f"Tr_translation_small: {tr_translation_small}")
-    print(f"R_rect_identity_max_abs_diff: {rect_identity_delta:.9f}")
-    print(f"P_rect_fx_fy: [{fx:.6f}, {fy:.6f}]")
-    print(f"P_rect_cx_cy: [{cx:.6f}, {cy:.6f}]")
-    print(f"Image_size_wh: [{image_w}, {image_h}]")
-
-    matrix_pass = all([tr_last_row_ok, tr_translation_small, focal_ok, center_ok, rect_identity_delta < 0.05])
-
-    print("\n--- TEST 2: POINT DISTRIBUTION CHECK ---")
-    frame_pairs = _list_first_n_pairs(5)
-    traced_frames = []
-    distribution_pass = True
-    for image_name, lidar_name in frame_pairs:
-        frame = _project_with_full_trace(image_name, lidar_name, tr_velo_to_cam, r_rect, p_rect)
-        traced_frames.append(frame)
-        survive_ratio = frame.stats["after_proj_filter"] / max(frame.stats["input_points"], 1)
-        print(
-            f"{frame.name}: "
-            f"input_points={frame.stats['input_points']} "
-            f"after_cam_filter={frame.stats['after_cam_filter']} "
-            f"after_proj_filter={frame.stats['after_proj_filter']} "
-            f"in_frame={frame.stats['in_frame']} "
-            f"survival_ratio={survive_ratio:.6f}"
-        )
-        if survive_ratio < SURVIVAL_PASS_RATIO:
-            distribution_pass = False
-
-    temporal_frame_count = max(5, int(TEMPORAL_STATS_MIN_FRAMES))
-    temporal_frame_pairs = _list_first_n_pairs(temporal_frame_count)
+    temporal_frame_pairs = _list_first_n_pairs(TEMPORAL_VALIDATION_FRAMES)
     temporal_traced_frames = [
         _project_with_full_trace(image_name, lidar_name, tr_velo_to_cam, r_rect, p_rect)
         for image_name, lidar_name in temporal_frame_pairs
     ]
-
-    print("\n--- TEST 3: EDGE ALIGNMENT ERROR (NUMERICAL) ---")
-    corrected_motion_pairs = _build_motion_frame_pairs(traced_frames)
-
-    original_edge_means = []
-    original_edge_medians = []
-    original_edge_kept = []
-    rgb_only_edge_means = []
-    rgb_only_edge_medians = []
-    rgb_only_edge_kept = []
-    corrected_edge_means = []
-    corrected_edge_medians = []
-    corrected_edge_kept = []
-
-    for frame in traced_frames:
-        edge_metrics = _compute_edge_alignment(frame.uv_int, frame.image)
-        original_edge_means.append(edge_metrics["mean_px"])
-        original_edge_medians.append(edge_metrics["median_px"])
-        original_edge_kept.append(edge_metrics["keep_ratio"])
-        print(
-            f"{frame.name} original: median_distance_px={edge_metrics['median_px']:.6f} "
-            f"mean_distance_px={edge_metrics['mean_px']:.6f} "
-            f"strong_edge_point_ratio={edge_metrics['keep_ratio']:.6f}"
-        )
-
-    for motion_pair in corrected_motion_pairs:
-        rgb_only_metrics = _compute_edge_alignment(motion_pair.rgb_only_uv_int, motion_pair.corrected_image)
-        rgb_only_edge_means.append(rgb_only_metrics["mean_px"])
-        rgb_only_edge_medians.append(rgb_only_metrics["median_px"])
-        rgb_only_edge_kept.append(rgb_only_metrics["keep_ratio"])
-        print(
-            f"{motion_pair.original_t.name}->{motion_pair.original_t1.name} rgb_only: "
-            f"median_distance_px={rgb_only_metrics['median_px']:.6f} "
-            f"mean_distance_px={rgb_only_metrics['mean_px']:.6f} "
-            f"strong_edge_point_ratio={rgb_only_metrics['keep_ratio']:.6f}"
-        )
-
-        edge_metrics = _compute_edge_alignment(motion_pair.corrected_uv_int, motion_pair.corrected_image)
-        corrected_edge_means.append(edge_metrics["mean_px"])
-        corrected_edge_medians.append(edge_metrics["median_px"])
-        corrected_edge_kept.append(edge_metrics["keep_ratio"])
-        print(
-            f"{motion_pair.original_t.name}->{motion_pair.original_t1.name} corrected: "
-            f"median_distance_px={edge_metrics['median_px']:.6f} "
-            f"mean_distance_px={edge_metrics['mean_px']:.6f} "
-            f"strong_edge_point_ratio={edge_metrics['keep_ratio']:.6f}"
-        )
-
-    original_edge_mean_global = float(np.mean(original_edge_means))
-    original_edge_median_global = float(np.median(original_edge_medians))
-    original_edge_keep_global = float(np.mean(original_edge_kept))
-    rgb_only_edge_mean_global = float(np.mean(rgb_only_edge_means)) if rgb_only_edge_means else float("inf")
-    rgb_only_edge_median_global = float(np.median(rgb_only_edge_medians)) if rgb_only_edge_medians else float("inf")
-    rgb_only_edge_keep_global = float(np.mean(rgb_only_edge_kept)) if rgb_only_edge_kept else 0.0
-    corrected_edge_mean_global = float(np.mean(corrected_edge_means)) if corrected_edge_means else float("inf")
-    corrected_edge_median_global = float(np.median(corrected_edge_medians)) if corrected_edge_medians else float("inf")
-    corrected_edge_keep_global = float(np.mean(corrected_edge_kept)) if corrected_edge_kept else 0.0
-
-    print(f"original_edge_strong_point_ratio_global={original_edge_keep_global:.6f}")
-    print(f"original_edge_mean_global_px={original_edge_mean_global:.6f}")
-    print(f"original_edge_median_global_px={original_edge_median_global:.6f}")
-    print(f"rgb_only_edge_strong_point_ratio_global={rgb_only_edge_keep_global:.6f}")
-    print(f"rgb_only_edge_mean_global_px={rgb_only_edge_mean_global:.6f}")
-    print(f"rgb_only_edge_median_global_px={rgb_only_edge_median_global:.6f}")
-    print(f"corrected_edge_strong_point_ratio_global={corrected_edge_keep_global:.6f}")
-    print(f"corrected_edge_mean_global_px={corrected_edge_mean_global:.6f}")
-    print(f"corrected_edge_median_global_px={corrected_edge_median_global:.6f}")
-    edge_pass = (original_edge_median_global < EDGE_MEDIAN_PASS_PX) and (original_edge_mean_global < EDGE_MEAN_FAIL_PX)
-    edge_fail = original_edge_mean_global > EDGE_MEAN_FAIL_PX
-
-    print("\n--- TEST 4: STATIC STRUCTURE CHECK ---")
-    static_spreads = []
-    static_tilts = []
-    static_pass = True
-    static_candidates_found = 0
-    best_candidates = _select_tracked_candidates(traced_frames[:3])
-    for idx, frame in enumerate(traced_frames[:3]):
-        candidates = _detect_vertical_structures(frame)
-        if not candidates:
-            static_pass = False
-            print(f"{frame.name}: no_vertical_structure_detected")
-            continue
-        best = best_candidates[idx]
-        if best is None:
-            best = candidates[0]
-        static_candidates_found += 1
-        static_spreads.append(best["spread_px"])
-        static_tilts.append(abs(best["tilt_dxdy"]))
-        print(
-            f"{frame.name}: "
-            f"vertical_points={best['count']} "
-            f"spread_px={best['spread_px']:.6f} "
-            f"tilt_dxdy={best['tilt_dxdy']:.6f} "
-            f"vertical_span_px={best['vertical_span_px']:.6f} "
-            f"x_mid={best['x_mid']:.6f}"
-        )
-        if best["spread_px"] > VERTICAL_SPREAD_PASS_PX:
-            static_pass = False
-
-    if static_spreads:
-        print(f"static_spread_mean_px={float(np.mean(static_spreads)):.6f}")
-        print(f"static_tilt_mean_abs={float(np.mean(static_tilts)):.6f}")
-    else:
-        print("static_spread_mean_px=inf")
-        print("static_tilt_mean_abs=inf")
-
-    static_fail = bool(static_spreads) and float(np.mean(static_spreads)) > VERTICAL_SPREAD_FAIL_PX
-
-    print("\n--- TEST 5: TEMPORAL DISTORTION CHECK ---")
-    temporal_reports = []
-    temporal_frames = traced_frames[:3]
-    for frame, candidate in zip(temporal_frames, best_candidates):
-        if candidate is None:
-            temporal_reports.append((frame.name, None))
-            print(f"{frame.name}: temporal_profile=unavailable")
-            continue
-        profile = _temporal_profile(candidate, frame)
-        temporal_reports.append((frame.name, profile))
-        if profile is None:
-            print(f"{frame.name}: temporal_profile=insufficient_points")
-            continue
-        x_center, y_centers, residuals = profile
-        residual_text = ", ".join("nan" if not np.isfinite(v) else f"{v:.6f}" for v in residuals)
-        y_text = ", ".join(f"{v:.6f}" for v in y_centers)
-        print(f"{frame.name}: x_center_px={x_center:.6f} y_bins=[{y_text}] residuals_px=[{residual_text}]")
-
-    print("\n--- TEST 6: REPROJECTION CONSISTENCY ---")
-    reprojection_rmses = []
-    total_transform_inv = np.linalg.inv(r_rect @ tr_velo_to_cam)
-    tx = float(p_rect[0, 3])
-    ty = float(p_rect[1, 3])
-    tz = float(p_rect[2, 3])
-
-    for frame in traced_frames[:3]:
-        rect_cam_valid = frame.rect_cam[:, frame.valid_mask_input][:, frame.in_frame_mask_cam]
-        projected_valid = frame.projected[:, frame.valid_mask_input][:, frame.in_frame_mask_cam]
-        if rect_cam_valid.shape[1] == 0:
-            reprojection_rmses.append(float("inf"))
-            print(f"{frame.name}: reprojection_rmse_m=inf")
-            continue
-
-        Z = rect_cam_valid[2, :]
-        denom = Z + tz
-        u = projected_valid[0, :] / projected_valid[2, :]
-        v = projected_valid[1, :] / projected_valid[2, :]
-        X = (u * denom - cx * Z - tx) / fx
-        Y = (v * denom - cy * Z - ty) / fy
-        rect_reconstructed = np.vstack((X, Y, Z, np.ones_like(Z)))
-        lidar_reconstructed = total_transform_inv @ rect_reconstructed
-        lidar_original = frame.lidar_h[:, frame.valid_mask_input][:, frame.in_frame_mask_cam]
-        diff = lidar_reconstructed[:3, :] - lidar_original[:3, :]
-        rmse = float(np.sqrt(np.mean(diff ** 2)))
-        reprojection_rmses.append(rmse)
-        print(f"{frame.name}: reprojection_rmse_m={rmse:.12e}")
-
-    reprojection_rmse_global = float(np.mean(reprojection_rmses))
-    print(f"reprojection_rmse_global_m={reprojection_rmse_global:.12e}")
-    reprojection_pass = reprojection_rmse_global < REPROJECTION_PASS_RMSE
-    reprojection_fail = reprojection_rmse_global > REPROJECTION_FAIL_RMSE
-
-    print("\n--- TEST 7: CAMERA CONSISTENCY ---")
-    image_02_exists = os.path.isdir(IMAGE_DIR)
-    p_rect_02_matches = np.allclose(
-        p_rect,
-        parse_calib_cam_to_cam(os.path.join(DATASET_PATH, "calib_cam_to_cam.txt"), camera_id="02")[1],
-    )
-    p_rect_03_differs = not np.allclose(
-        p_rect,
-        parse_calib_cam_to_cam(os.path.join(DATASET_PATH, "calib_cam_to_cam.txt"), camera_id="03")[1],
-    )
-    print(f"image_02_exists: {image_02_exists}")
-    print(f"P_rect_02_used: {p_rect_02_matches}")
-    print(f"P_rect_03_mismatch_confirmed: {p_rect_03_differs}")
-    camera_consistency_pass = image_02_exists and p_rect_02_matches and p_rect_03_differs
-
-    print("\n--- TEST 8: VISUAL MODES ---")
-    _save_debug_modes(tr_velo_to_cam, r_rect, p_rect, frame_pairs)
-    print("visual_mode_1: near_points_only_lt_30m")
-    print("visual_mode_2: far_points_only_ge_30m")
-    print("visual_mode_3: edge_aligned_points_only")
 
     no_smoothing_metrics = _evaluate_mode_metrics(
         traced_frames,
@@ -1065,107 +873,122 @@ def run_tests():
         p_rect,
         use_smoothing=True,
     )
-    distortion_ratio = no_smoothing_metrics["distortion_ratio"]
-    temporal_detected = distortion_ratio > 2.0
 
-    print("\n--- TEST 9: DISTORTION vs ERROR CLASSIFICATION ---")
-    physically_correct = edge_pass and reprojection_pass and static_pass and temporal_detected
-    bug_detected = not physically_correct
-    if physically_correct:
-        print("classification: PHYSICALLY_CORRECT_LIDAR_TEMPORAL_DISTORTION")
-    else:
-        print("classification: BUG")
-        print(
-            "classification_inputs: "
-            f"edge_pass={edge_pass} "
-            f"reprojection_pass={reprojection_pass} "
-            f"static_pass={static_pass} "
-            f"temporal_detected={temporal_detected}"
-        )
-
-    projection_correctness = matrix_pass and distribution_pass and edge_pass and not reprojection_fail
-    calibration_correctness = matrix_pass and camera_consistency_pass and not static_fail and edge_pass
-    ready_for_research = physically_correct and projection_correctness and calibration_correctness
-    print(f"distortion_ratio={distortion_ratio:.6f}")
-
-    print("\nProjection correctness: " + ("PASS" if projection_correctness else "FAIL"))
-    print("Calibration correctness: " + ("PASS" if calibration_correctness else "FAIL"))
-    print("Temporal distortion detected: " + ("YES" if temporal_detected else "NO"))
-    print("Temporal distortion detected (statistical): " + ("YES" if no_smoothing_metrics["detected"] else "NO"))
-    print("Bug detected: " + ("YES" if bug_detected else "NO"))
-    print("Ready for research stage: " + ("YES" if ready_for_research else "NO"))
-
-    no_smoothing_improvement = no_smoothing_metrics["original_temporal_mean_px"] - no_smoothing_metrics["corrected_temporal_mean_px"]
-    no_smoothing_improvement_percent = (
-        (no_smoothing_improvement / no_smoothing_metrics["original_temporal_mean_px"]) * 100.0
-        if np.isfinite(no_smoothing_metrics["original_temporal_mean_px"])
-        and no_smoothing_metrics["original_temporal_mean_px"] != 0.0
-        and np.isfinite(no_smoothing_metrics["corrected_temporal_mean_px"])
-        else 0.0
+    no_smoothing_improvement_px, no_smoothing_improvement_percent = _compute_improvement(
+        no_smoothing_metrics["original_temporal_mean_px"],
+        no_smoothing_metrics["corrected_temporal_mean_px"],
     )
-    smoothing_improvement = smoothing_metrics["original_temporal_mean_px"] - smoothing_metrics["corrected_temporal_mean_px"]
-    smoothing_improvement_percent = (
-        (smoothing_improvement / smoothing_metrics["original_temporal_mean_px"]) * 100.0
-        if np.isfinite(smoothing_metrics["original_temporal_mean_px"])
-        and smoothing_metrics["original_temporal_mean_px"] != 0.0
-        and np.isfinite(smoothing_metrics["corrected_temporal_mean_px"])
-        else 0.0
+    smoothing_improvement_px, smoothing_improvement_percent = _compute_improvement(
+        smoothing_metrics["original_temporal_mean_px"],
+        smoothing_metrics["corrected_temporal_mean_px"],
     )
 
-    original_change = no_smoothing_metrics["original_temporal_mean_px"] - smoothing_metrics["original_temporal_mean_px"]
-    rgb_only_change = no_smoothing_metrics["rgb_only_temporal_mean_px"] - smoothing_metrics["rgb_only_temporal_mean_px"]
-    corrected_change = no_smoothing_metrics["corrected_temporal_mean_px"] - smoothing_metrics["corrected_temporal_mean_px"]
+    return {
+        "dataset_path": dataset_path,
+        "dataset_name": os.path.basename(dataset_path),
+        "no_smoothing": {
+            "original_error": no_smoothing_metrics["original_temporal_mean_px"],
+            "rgb_only_error": no_smoothing_metrics["rgb_only_temporal_mean_px"],
+            "corrected_error": no_smoothing_metrics["corrected_temporal_mean_px"],
+            "improvement_px": no_smoothing_improvement_px,
+            "improvement_percent": no_smoothing_improvement_percent,
+        },
+        "with_smoothing": {
+            "original_error": smoothing_metrics["original_temporal_mean_px"],
+            "rgb_only_error": smoothing_metrics["rgb_only_temporal_mean_px"],
+            "corrected_error": smoothing_metrics["corrected_temporal_mean_px"],
+            "improvement_px": smoothing_improvement_px,
+            "improvement_percent": smoothing_improvement_percent,
+        },
+        "smoothing_effect": {
+            "original_change": no_smoothing_metrics["original_temporal_mean_px"] - smoothing_metrics["original_temporal_mean_px"],
+            "rgb_only_change": no_smoothing_metrics["rgb_only_temporal_mean_px"] - smoothing_metrics["rgb_only_temporal_mean_px"],
+            "corrected_change": no_smoothing_metrics["corrected_temporal_mean_px"] - smoothing_metrics["corrected_temporal_mean_px"],
+        },
+    }
 
-    print("")
+
+def _print_dataset_results(result):
+    no_smoothing = result["no_smoothing"]
+    with_smoothing = result["with_smoothing"]
+    smoothing_effect = result["smoothing_effect"]
+
     print("==============================")
-    print("NO SMOOTHING RESULTS")
-    print("====================")
+    print(f"DATASET: {result['dataset_name']}")
+    print("=======================")
     print("")
-    print("Original:")
-    print(f"Temporal inconsistency: {no_smoothing_metrics['original_temporal_mean_px']:.6f} px")
-    print(f"Edge median: {no_smoothing_metrics['original_edge_median_px']:.6f} px")
+    print("--- NO SMOOTHING ---")
+    print(f"Original: {_format_px(no_smoothing['original_error'])}")
+    print(f"RGB-only: {_format_px(no_smoothing['rgb_only_error'])}")
+    print(f"Corrected: {_format_px(no_smoothing['corrected_error'])}")
+    print(
+        f"Improvement: {_format_px(no_smoothing['improvement_px'])} "
+        f"({_format_percent(no_smoothing['improvement_percent'])})"
+    )
     print("")
-    print("RGB-only:")
-    print(f"Temporal inconsistency: {no_smoothing_metrics['rgb_only_temporal_mean_px']:.6f} px")
+    print("--- WITH SMOOTHING ---")
+    print(f"Original: {_format_px(with_smoothing['original_error'])}")
+    print(f"RGB-only: {_format_px(with_smoothing['rgb_only_error'])}")
+    print(f"Corrected: {_format_px(with_smoothing['corrected_error'])}")
+    print(
+        f"Improvement: {_format_px(with_smoothing['improvement_px'])} "
+        f"({_format_percent(with_smoothing['improvement_percent'])})"
+    )
     print("")
-    print("Corrected:")
-    print(f"Temporal inconsistency: {no_smoothing_metrics['corrected_temporal_mean_px']:.6f} px")
+    print("--- SMOOTHING EFFECT ---")
+    print(f"Original change: {_format_px(smoothing_effect['original_change'])}")
+    print(f"RGB-only change: {_format_px(smoothing_effect['rgb_only_change'])}")
+    print(f"Corrected change: {_format_px(smoothing_effect['corrected_change'])}")
     print("")
-    print("Improvement:")
-    print(f"\u0394 = {no_smoothing_improvement:.6f} px ({no_smoothing_improvement_percent:.2f} %)")
+
+
+def _mean_of(values):
+    return float(np.mean(values)) if values else float("nan")
+
+
+def run_all_datasets():
+    no_smoothing_original_errors = []
+    no_smoothing_corrected_errors = []
+    no_smoothing_improvements = []
+    smoothing_original_errors = []
+    smoothing_corrected_errors = []
+    smoothing_improvements = []
+    dataset_results = []
+
+    for dataset_path in DATASETS:
+        result = run_validation_on_dataset(dataset_path)
+        dataset_results.append(result)
+        _print_dataset_results(result)
+
+        no_smoothing_original_errors.append(result["no_smoothing"]["original_error"])
+        no_smoothing_corrected_errors.append(result["no_smoothing"]["corrected_error"])
+        no_smoothing_improvements.append(result["no_smoothing"]["improvement_percent"])
+
+        smoothing_original_errors.append(result["with_smoothing"]["original_error"])
+        smoothing_corrected_errors.append(result["with_smoothing"]["corrected_error"])
+        smoothing_improvements.append(result["with_smoothing"]["improvement_percent"])
+
+    best_dataset = max(dataset_results, key=lambda item: item["no_smoothing"]["improvement_percent"])
+    worst_dataset = min(dataset_results, key=lambda item: item["no_smoothing"]["improvement_percent"])
+
+    print("==============================")
+    print("FINAL AGGREGATED RESULTS")
+    print("========================")
+    print("")
+    print("NO SMOOTHING:")
+    print(f"Avg Original: {_format_px(_mean_of(no_smoothing_original_errors))}")
+    print(f"Avg Corrected: {_format_px(_mean_of(no_smoothing_corrected_errors))}")
+    print(f"Avg Improvement: {_format_percent(_mean_of(no_smoothing_improvements))}")
+    print("")
+    print("WITH SMOOTHING:")
+    print(f"Avg Original: {_format_px(_mean_of(smoothing_original_errors))}")
+    print(f"Avg Corrected: {_format_px(_mean_of(smoothing_corrected_errors))}")
+    print(f"Avg Improvement: {_format_percent(_mean_of(smoothing_improvements))}")
     print("")
     print("---")
     print("")
-    print("==============================")
-    print("WITH SMOOTHING RESULTS")
-    print("======================")
-    print("")
-    print("Original:")
-    print(f"Temporal inconsistency: {smoothing_metrics['original_temporal_mean_px']:.6f} px")
-    print(f"Edge median: {smoothing_metrics['original_edge_median_px']:.6f} px")
-    print("")
-    print("RGB-only:")
-    print(f"Temporal inconsistency: {smoothing_metrics['rgb_only_temporal_mean_px']:.6f} px")
-    print("")
-    print("Corrected:")
-    print(f"Temporal inconsistency: {smoothing_metrics['corrected_temporal_mean_px']:.6f} px")
-    print("")
-    print("Improvement:")
-    print(f"\u0394 = {smoothing_improvement:.6f} px ({smoothing_improvement_percent:.2f} %)")
-    print("")
-    print("---")
-    print("")
-    print("==============================")
-    print("COMPARISON (SMOOTHING EFFECT)")
-    print("=============================")
-    print("")
-    print(f"Original change: {original_change:.6f} px")
-    print(f"RGB-only change: {rgb_only_change:.6f} px")
-    print(f"Corrected change: {corrected_change:.6f} px")
-    print("")
-    print(f"Smoothing benefit (corrected): {corrected_change:.6f} px")
-    print("")
-    print("---")
+    print(f"Best dataset improvement: {_format_percent(best_dataset['no_smoothing']['improvement_percent'])}")
+    print(f"Worst dataset improvement: {_format_percent(worst_dataset['no_smoothing']['improvement_percent'])}")
 
 
 if __name__ == "__main__":
@@ -1181,10 +1004,7 @@ if __name__ == "__main__":
     with open(log_path, "w", encoding="utf-8") as log_file:
         sys.stdout = TeeStream(original_stdout, log_file)
         try:
-            print(f"Validation run timestamp: {run_timestamp.isoformat(timespec='seconds')}")
-            print(f"Validation log file: {log_path}")
-            print("")
-            run_tests()
+            run_all_datasets()
         finally:
             sys.stdout.flush()
             sys.stdout = original_stdout
