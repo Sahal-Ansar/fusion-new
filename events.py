@@ -16,6 +16,7 @@ def simulate_events(img1, img2, threshold=0.2):
     events = np.zeros_like(diff, dtype=np.float32)
     events[diff > threshold] = 1.0
     events[diff < -threshold] = -1.0
+    events = cv2.GaussianBlur(events.astype(np.float32), (5, 5), 0)
     return events
 
 
@@ -27,9 +28,9 @@ def events_to_image(events):
     vis[event_map < 0] = (0, 0, 255)
     return vis
 
+
 def event_confidence(events):
-    """Convert event map to confidence mask (0–1)."""
-    conf = np.abs(events)
-    if conf.max() > 0:
-        conf = conf / conf.max()
-    return conf.astype(np.float32)
+    """Convert event map to a sparse binary confidence mask."""
+    conf = (np.abs(events) > 0.1).astype(np.float32)
+    print("Event density:", np.mean(conf))
+    return conf

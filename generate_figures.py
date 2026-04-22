@@ -14,7 +14,7 @@ from lidar_motion import move_lidar_points_weighted
 # CONFIG
 # ==========================
 DATASET_PATH = r"C:\Users\sahaa\OneDrive\Desktop\Honors\datasets\fusion\2011_09_26_drive_0009_sync"
-FRAME_INDEX = 30   # change this to pick a good frame
+FRAME_INDEX = 40   # change this to pick a good frame
 OUTPUT_DIR = "paper_figures"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -84,7 +84,11 @@ uv_moved, depth_moved = move_lidar_points_weighted(
 # ==========================
 # 4. AFTER PROJECTION (on t+1)
 # ==========================
-after = overlay_points(img_t, uv_moved, depth_moved)
+before_base = img_t.copy()
+after_base = img_t.copy()
+
+before = overlay_points(before_base, uv, depth)
+after = overlay_points(after_base, uv_moved, depth_moved)
 
 cv2.putText(before, "Before", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 cv2.putText(after, "After", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
@@ -107,7 +111,7 @@ def resize_to_same(a, b):
 
 before_r, after_r = resize_to_same(before, after)
 
-comparison = np.hstack((before_r, after_r))
+comparison = np.vstack((before_r, after_r))
 blend = cv2.addWeighted(before, 0.5, after, 0.5, 0)
 
 
