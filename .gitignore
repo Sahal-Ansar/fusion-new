@@ -1,0 +1,2 @@
+# Ignore paper figures directories with generated images
+paper_figures*/
