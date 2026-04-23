@@ -88,6 +88,16 @@ def overlay_points(image_bgr, uv, depth, max_points=12000, radius=1):
     if uv.shape[0] == 0:
         return canvas
 
+    valid = (
+        np.isfinite(uv[:, 0])
+        & np.isfinite(uv[:, 1])
+        & np.isfinite(depth)
+    )
+    uv = uv[valid]
+    depth = depth[valid]
+    if uv.shape[0] == 0:
+        return canvas
+
     if uv.shape[0] > max_points:
         idx = np.linspace(0, uv.shape[0] - 1, num=max_points, dtype=np.int32)
         uv = uv[idx]

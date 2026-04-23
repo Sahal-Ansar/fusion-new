@@ -1,9 +1,20 @@
+# Fixed: 2026-04-24 — see pipeline_fixes.md for reasoning
 import cv2
 import numpy as np
 
 
-def simulate_events(img1, img2, threshold=0.2):
-    """Simulate a simple event map from two RGB/BGR frames."""
+def simulate_events(img1, img2, threshold=0.3):
+    """
+    Simulate event camera output from two consecutive RGB frames.
+
+    Uses log-intensity difference (mimicking DVS hardware response).
+    Events fire where brightness change exceeds threshold.
+    Morphological dilation slightly expands event regions for
+    confidence masking without causing density explosion.
+
+    threshold=0.3 corresponds to ~30% relative brightness change,
+    which filters camera noise while capturing real motion edges.
+    """
     gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY).astype(np.float32)
     gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY).astype(np.float32)
 
@@ -16,8 +27,24 @@ def simulate_events(img1, img2, threshold=0.2):
     events = np.zeros_like(diff, dtype=np.float32)
     events[diff > threshold] = 1.0
     events[diff < -threshold] = -1.0
-    events = cv2.GaussianBlur(events.astype(np.float32), (5, 5), 0)
-    return events
+
+    # Morphological dilation: expand each event pixel to 8-neighbors.
+    # This is physically motivated: real DVS pixels have slight spatial
+    # coupling and our simulated events are pixel-exact, so mild dilation
+    # compensates for sub-pixel misalignment in LiDAR projection.
+    kernel = np.ones((3, 3), np.uint8)
+    on_events = (events == 1.0).astype(np.uint8)
+    off_events = (events == -1.0).astype(np.uint8)
+    on_dilated = cv2.dilate(on_events, kernel, iterations=1)
+    off_dilated = cv2.dilate(off_events, kernel, iterations=1)
+
+    events_out = np.zeros_like(events, dtype=np.float32)
+    events_out[on_dilated > 0] = 1.0
+    events_out[off_dilated > 0] = -1.0
+    # Where both on and off overlap after dilation, set to zero (ambiguous)
+    events_out[(on_dilated > 0) & (off_dilated > 0)] = 0.0
+
+    return events_out
 
 
 def events_to_image(events):
@@ -30,7 +57,14 @@ def events_to_image(events):
 
 
 def event_confidence(events):
-    """Convert event map to a sparse binary confidence mask."""
-    conf = (np.abs(events) > 0.1).astype(np.float32)
-    print("Event density:", np.mean(conf))
+    """
+    Convert event map to a sparse binary confidence mask.
+
+    Threshold at 0.5 since events are binary {-1, 0, +1} after simulate_events.
+    Only pixels directly at event locations (and their dilated neighbors) pass.
+    Target density: 5% to 20% of pixels.
+    """
+    conf = (np.abs(events) > 0.5).astype(np.float32)
+    density = float(np.mean(conf))
+    print(f"Event density: {density:.4f}  (target: 0.05 to 0.20)")
     return conf

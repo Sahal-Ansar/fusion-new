@@ -1,0 +1,694 @@
+Tr_velo_to_cam (4x4):
+[[ 7.533745e-03 -9.999714e-01 -6.166020e-04 -4.069766e-03]
+ [ 1.480249e-02  7.280733e-04 -9.998902e-01 -7.631618e-02]
+ [ 9.998621e-01  7.523790e-03  1.480755e-02 -2.717806e-01]
+ [ 0.000000e+00  0.000000e+00  0.000000e+00  1.000000e+00]]
+Tr translation (m): tx=-0.004070, ty=-0.076316, tz=-0.271781
+P_rect_02 (3x4):
+[[7.215377e+02 0.000000e+00 6.095593e+02 4.485728e+01]
+ [0.000000e+00 7.215377e+02 1.728540e+02 2.163791e-01]
+ [0.000000e+00 0.000000e+00 1.000000e+00 2.745884e-03]]
+R_rect (4x4):
+[[ 0.9999239   0.00983776 -0.00744505  0.        ]
+ [-0.0098698   0.9999421  -0.00427846  0.        ]
+ [ 0.00740253  0.00435161  0.9999631   0.        ]
+ [ 0.          0.          0.          1.        ]]
+R_rect max deviation from identity: 9.869795e-03
+Event density: 0.6073752
+Total points: 16847
+Valid moved points: 3170
+Movement ratio: 0.18816406481866207
+Event density: 0.6175223
+Total points: 16565
+Valid moved points: 2214
+Movement ratio: 0.13365529731361303
+Event density: 0.64807516
+Total points: 16821
+Valid moved points: 2585
+Movement ratio: 0.15367695142976043
+Event density: 0.6172496
+Total points: 17555
+Valid moved points: 3072
+Movement ratio: 0.17499287952150386
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+Event density: 0.6073752
+Total points: 16847
+Valid moved points: 3170
+Movement ratio: 0.18816406481866207
+Event density: 0.6175223
+Total points: 16565
+Valid moved points: 2214
+Movement ratio: 0.13365529731361303
+Event density: 0.64807516
+Total points: 16821
+Valid moved points: 2585
+Movement ratio: 0.15367695142976043
+Event density: 0.6172496
+Total points: 17555
+Valid moved points: 3072
+Movement ratio: 0.17499287952150386
+Event density: 0.5839141
+Total points: 18262
+Valid moved points: 3187
+Movement ratio: 0.17451538714270068
+Total points: 1102
+Valid moved points: 237
+Movement ratio: 0.2150635208711434
+0000000000->0000000001: original_mean_error_px=11.225198 original_median_error_px=11.006332 rgb_only_mean_error_px=11.222422 rgb_only_median_error_px=10.987301 corrected_mean_error_px=1.842958 corrected_median_error_px=1.771648 matches=1046
+Total points: 2111
+Valid moved points: 332
+Movement ratio: 0.15727143533870203
+0000000001->0000000002: original_mean_error_px=13.347836 original_median_error_px=12.363791 rgb_only_mean_error_px=13.185053 rgb_only_median_error_px=12.222869 corrected_mean_error_px=1.614390 corrected_median_error_px=1.492973 matches=2005
+Total points: 1589
+Valid moved points: 312
+Movement ratio: 0.19634990560100693
+0000000002->0000000003: original_mean_error_px=10.083517 original_median_error_px=8.926653 rgb_only_mean_error_px=10.075894 rgb_only_median_error_px=8.958362 corrected_mean_error_px=1.761677 corrected_median_error_px=1.640979 matches=1509
+Total points: 4133
+Valid moved points: 706
+Movement ratio: 0.1708202274376966
+0000000003->0000000004: original_mean_error_px=17.656767 original_median_error_px=15.047110 rgb_only_mean_error_px=16.522387 rgb_only_median_error_px=14.234166 corrected_mean_error_px=1.467964 corrected_median_error_px=1.412684 matches=3928
+Total points: 3131
+Valid moved points: 432
+Movement ratio: 0.13797508783136378
+0000000004->0000000005: original_mean_error_px=20.508327 original_median_error_px=18.396305 rgb_only_mean_error_px=18.566013 rgb_only_median_error_px=17.128279 corrected_mean_error_px=1.543711 corrected_median_error_px=1.445267 matches=2974
+Original temporal inconsistency mean error: 16.058937 px
+Original temporal inconsistency median error: 12.861717 px
+RGB-only temporal inconsistency mean error: 15.068895 px
+RGB-only temporal inconsistency median error: 12.287197 px
+Corrected temporal inconsistency mean error: 1.586141 px
+Corrected temporal inconsistency median error: 1.474725 px
+Image self-consistency error: 2.302111 px
+Temporal distortion (statistical): YES
+Event density: 0.6073752
+Total points: 16847
+Valid moved points: 3170
+Movement ratio: 0.18816406481866207
+Event density: 0.6175223
+Total points: 16565
+Valid moved points: 2341
+Movement ratio: 0.14132206459402355
+Event density: 0.64807516
+Total points: 16821
+Valid moved points: 2327
+Movement ratio: 0.13833898103561024
+Event density: 0.6172496
+Total points: 17555
+Valid moved points: 3053
+Movement ratio: 0.1739105667900883
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+Event density: 0.6073752
+Total points: 16847
+Valid moved points: 3170
+Movement ratio: 0.18816406481866207
+Event density: 0.6175223
+Total points: 16565
+Valid moved points: 2341
+Movement ratio: 0.14132206459402355
+Event density: 0.64807516
+Total points: 16821
+Valid moved points: 2327
+Movement ratio: 0.13833898103561024
+Event density: 0.6172496
+Total points: 17555
+Valid moved points: 3053
+Movement ratio: 0.1739105667900883
+Event density: 0.5839141
+Total points: 18262
+Valid moved points: 3168
+Movement ratio: 0.17347497535866827
+Total points: 1090
+Valid moved points: 237
+Movement ratio: 0.21743119266055047
+0000000000->0000000001: original_mean_error_px=11.226613 original_median_error_px=10.996926 rgb_only_mean_error_px=11.221632 rgb_only_median_error_px=10.979369 corrected_mean_error_px=1.831093 corrected_median_error_px=1.765704 matches=1035
+Total points: 2124
+Valid moved points: 383
+Movement ratio: 0.1803201506591337
+0000000001->0000000002: original_mean_error_px=12.023211 original_median_error_px=11.279608 rgb_only_mean_error_px=11.956621 rgb_only_median_error_px=11.268726 corrected_mean_error_px=1.629166 corrected_median_error_px=1.499604 matches=2017
+Total points: 1662
+Valid moved points: 249
+Movement ratio: 0.14981949458483754
+0000000002->0000000003: original_mean_error_px=10.774928 original_median_error_px=10.727152 rgb_only_mean_error_px=10.781276 rgb_only_median_error_px=10.727598 corrected_mean_error_px=1.757814 corrected_median_error_px=1.646826 matches=1578
+Total points: 4281
+Valid moved points: 800
+Movement ratio: 0.18687222611539359
+0000000003->0000000004: original_mean_error_px=16.325983 original_median_error_px=13.327807 rgb_only_mean_error_px=15.318955 rgb_only_median_error_px=12.157051 corrected_mean_error_px=1.485054 corrected_median_error_px=1.417230 matches=4068
+Total points: 3291
+Valid moved points: 507
+Movement ratio: 0.15405651777575205
+0000000004->0000000005: original_mean_error_px=18.687450 original_median_error_px=16.337547 rgb_only_mean_error_px=16.845827 rgb_only_median_error_px=15.064623 corrected_mean_error_px=1.557260 corrected_median_error_px=1.449221 matches=3126
+Original temporal inconsistency mean error: 15.029118 px
+Original temporal inconsistency median error: 12.204266 px
+RGB-only temporal inconsistency mean error: 14.133750 px
+RGB-only temporal inconsistency median error: 11.749910 px
+Corrected temporal inconsistency mean error: 1.595428 px
+Corrected temporal inconsistency median error: 1.477074 px
+Image self-consistency error: 3.117560 px
+Temporal distortion (statistical): YES
+==============================
+DATASET: 2011_09_26_drive_0009_sync
+=======================
+
+--- NO SMOOTHING ---
+Original: 16.058937 px
+RGB-only: 15.068895 px
+Corrected: 1.586141 px
+Improvement: 14.472796 px (90.12 %)
+
+--- WITH SMOOTHING ---
+Original: 15.029118 px
+RGB-only: 14.133750 px
+Corrected: 1.595428 px
+Improvement: 13.433689 px (89.38 %)
+
+--- SMOOTHING EFFECT ---
+Original change: 1.029819 px
+RGB-only change: 0.935145 px
+Corrected change: -0.009287 px
+
+Tr_velo_to_cam (4x4):
+[[ 7.533745e-03 -9.999714e-01 -6.166020e-04 -4.069766e-03]
+ [ 1.480249e-02  7.280733e-04 -9.998902e-01 -7.631618e-02]
+ [ 9.998621e-01  7.523790e-03  1.480755e-02 -2.717806e-01]
+ [ 0.000000e+00  0.000000e+00  0.000000e+00  1.000000e+00]]
+Tr translation (m): tx=-0.004070, ty=-0.076316, tz=-0.271781
+P_rect_02 (3x4):
+[[7.215377e+02 0.000000e+00 6.095593e+02 4.485728e+01]
+ [0.000000e+00 7.215377e+02 1.728540e+02 2.163791e-01]
+ [0.000000e+00 0.000000e+00 1.000000e+00 2.745884e-03]]
+R_rect (4x4):
+[[ 0.9999239   0.00983776 -0.00744505  0.        ]
+ [-0.0098698   0.9999421  -0.00427846  0.        ]
+ [ 0.00740253  0.00435161  0.9999631   0.        ]
+ [ 0.          0.          0.          1.        ]]
+R_rect max deviation from identity: 9.869795e-03
+Event density: 0.622978
+Total points: 20478
+Valid moved points: 2328
+Movement ratio: 0.11368297685320831
+Event density: 0.6370993
+Total points: 20522
+Valid moved points: 1119
+Movement ratio: 0.05452684923496735
+Event density: 0.6244745
+Total points: 20565
+Valid moved points: 1140
+Movement ratio: 0.055433989788475566
+Event density: 0.58306605
+Total points: 20583
+Valid moved points: 2129
+Movement ratio: 0.10343487343924598
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+Event density: 0.622978
+Total points: 20478
+Valid moved points: 2328
+Movement ratio: 0.11368297685320831
+Event density: 0.6370993
+Total points: 20522
+Valid moved points: 1119
+Movement ratio: 0.05452684923496735
+Event density: 0.6244745
+Total points: 20565
+Valid moved points: 1140
+Movement ratio: 0.055433989788475566
+Event density: 0.58306605
+Total points: 20583
+Valid moved points: 2129
+Movement ratio: 0.10343487343924598
+Event density: 0.5926828
+Total points: 20496
+Valid moved points: 2273
+Movement ratio: 0.11089968774395004
+Total points: 8022
+Valid moved points: 726
+Movement ratio: 0.09050112191473449
+0000000000->0000000001: original_mean_error_px=10.532566 original_median_error_px=9.410516 rgb_only_mean_error_px=10.265390 rgb_only_median_error_px=9.257674 corrected_mean_error_px=1.299967 corrected_median_error_px=1.216113 matches=7624
+Total points: 8283
+Valid moved points: 433
+Movement ratio: 0.05227574550283714
+0000000001->0000000002: original_mean_error_px=9.984239 original_median_error_px=9.241176 rgb_only_mean_error_px=9.832698 rgb_only_median_error_px=9.161608 corrected_mean_error_px=1.316704 corrected_median_error_px=1.266829 matches=7871
+Total points: 5381
+Valid moved points: 258
+Movement ratio: 0.04794647834974912
+0000000002->0000000003: original_mean_error_px=9.036709 original_median_error_px=8.756836 rgb_only_mean_error_px=8.997725 rgb_only_median_error_px=8.739008 corrected_mean_error_px=1.339985 corrected_median_error_px=1.275753 matches=5112
+Total points: 1503
+Valid moved points: 130
+Movement ratio: 0.08649367930805056
+0000000003->0000000004: original_mean_error_px=8.747908 original_median_error_px=8.533501 rgb_only_mean_error_px=8.625843 rgb_only_median_error_px=8.486359 corrected_mean_error_px=1.573350 corrected_median_error_px=1.483324 matches=1427
+Total points: 1502
+Valid moved points: 140
+Movement ratio: 0.09320905459387484
+0000000004->0000000005: original_mean_error_px=9.827714 original_median_error_px=9.211476 rgb_only_mean_error_px=9.702559 rgb_only_median_error_px=9.199310 corrected_mean_error_px=1.482612 corrected_median_error_px=1.349262 matches=1426
+Original temporal inconsistency mean error: 9.871247 px
+Original temporal inconsistency median error: 9.111705 px
+RGB-only temporal inconsistency mean error: 9.708422 px
+RGB-only temporal inconsistency median error: 9.014949 px
+Corrected temporal inconsistency mean error: 1.342047 px
+Corrected temporal inconsistency median error: 1.266324 px
+Image self-consistency error: 0.721005 px
+Temporal distortion (statistical): YES
+Event density: 0.622978
+Total points: 20478
+Valid moved points: 2328
+Movement ratio: 0.11368297685320831
+Event density: 0.6370993
+Total points: 20522
+Valid moved points: 1145
+Movement ratio: 0.055793782282428615
+Event density: 0.6244745
+Total points: 20565
+Valid moved points: 914
+Movement ratio: 0.044444444444444446
+Event density: 0.58306605
+Total points: 20583
+Valid moved points: 1935
+Movement ratio: 0.0940096195889812
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+Event density: 0.622978
+Total points: 20478
+Valid moved points: 2328
+Movement ratio: 0.11368297685320831
+Event density: 0.6370993
+Total points: 20522
+Valid moved points: 1145
+Movement ratio: 0.055793782282428615
+Event density: 0.6244745
+Total points: 20565
+Valid moved points: 914
+Movement ratio: 0.044444444444444446
+Event density: 0.58306605
+Total points: 20583
+Valid moved points: 1935
+Movement ratio: 0.0940096195889812
+Event density: 0.5926828
+Total points: 20496
+Valid moved points: 2233
+Movement ratio: 0.10894808743169399
+Total points: 8036
+Valid moved points: 730
+Movement ratio: 0.09084121453459433
+0000000000->0000000001: original_mean_error_px=10.532665 original_median_error_px=9.410516 rgb_only_mean_error_px=10.265516 rgb_only_median_error_px=9.257674 corrected_mean_error_px=1.300732 corrected_median_error_px=1.216564 matches=7638
+Total points: 8261
+Valid moved points: 472
+Movement ratio: 0.05713593995884275
+0000000001->0000000002: original_mean_error_px=9.586536 original_median_error_px=8.611843 rgb_only_mean_error_px=9.461671 rgb_only_median_error_px=8.520723 corrected_mean_error_px=1.310992 corrected_median_error_px=1.263311 matches=7850
+Total points: 5476
+Valid moved points: 244
+Movement ratio: 0.04455807158509861
+0000000002->0000000003: original_mean_error_px=8.760371 original_median_error_px=8.457201 rgb_only_mean_error_px=8.730818 rgb_only_median_error_px=8.420380 corrected_mean_error_px=1.334303 corrected_median_error_px=1.271590 matches=5203
+Total points: 1496
+Valid moved points: 134
+Movement ratio: 0.08957219251336898
+0000000003->0000000004: original_mean_error_px=8.344974 original_median_error_px=8.248580 rgb_only_mean_error_px=8.284758 rgb_only_median_error_px=8.223928 corrected_mean_error_px=1.579860 corrected_median_error_px=1.493509 matches=1421
+Total points: 1501
+Valid moved points: 137
+Movement ratio: 0.09127248500999334
+0000000004->0000000005: original_mean_error_px=9.193480 original_median_error_px=8.747054 rgb_only_mean_error_px=9.088874 rgb_only_median_error_px=8.706030 corrected_mean_error_px=1.461081 corrected_median_error_px=1.332972 matches=1426
+Original temporal inconsistency mean error: 9.612164 px
+Original temporal inconsistency median error: 8.728647 px
+RGB-only temporal inconsistency mean error: 9.465262 px
+RGB-only temporal inconsistency median error: 8.656239 px
+Corrected temporal inconsistency mean error: 1.338155 px
+Corrected temporal inconsistency median error: 1.263478 px
+Image self-consistency error: 1.445598 px
+Temporal distortion (statistical): YES
+==============================
+DATASET: 2011_09_26_drive_0005_sync
+=======================
+
+--- NO SMOOTHING ---
+Original: 9.871247 px
+RGB-only: 9.708422 px
+Corrected: 1.342047 px
+Improvement: 8.529200 px (86.40 %)
+
+--- WITH SMOOTHING ---
+Original: 9.612164 px
+RGB-only: 9.465262 px
+Corrected: 1.338155 px
+Improvement: 8.274010 px (86.08 %)
+
+--- SMOOTHING EFFECT ---
+Original change: 0.259083 px
+RGB-only change: 0.243159 px
+Corrected change: 0.003892 px
+
+Tr_velo_to_cam (4x4):
+[[ 7.533745e-03 -9.999714e-01 -6.166020e-04 -4.069766e-03]
+ [ 1.480249e-02  7.280733e-04 -9.998902e-01 -7.631618e-02]
+ [ 9.998621e-01  7.523790e-03  1.480755e-02 -2.717806e-01]
+ [ 0.000000e+00  0.000000e+00  0.000000e+00  1.000000e+00]]
+Tr translation (m): tx=-0.004070, ty=-0.076316, tz=-0.271781
+P_rect_02 (3x4):
+[[7.215377e+02 0.000000e+00 6.095593e+02 4.485728e+01]
+ [0.000000e+00 7.215377e+02 1.728540e+02 2.163791e-01]
+ [0.000000e+00 0.000000e+00 1.000000e+00 2.745884e-03]]
+R_rect (4x4):
+[[ 0.9999239   0.00983776 -0.00744505  0.        ]
+ [-0.0098698   0.9999421  -0.00427846  0.        ]
+ [ 0.00740253  0.00435161  0.9999631   0.        ]
+ [ 0.          0.          0.          1.        ]]
+R_rect max deviation from identity: 9.869795e-03
+Event density: 0.6843135
+Total points: 17490
+Valid moved points: 3380
+Movement ratio: 0.19325328759291024
+Event density: 0.68600965
+Total points: 17334
+Valid moved points: 2651
+Movement ratio: 0.1529364255220953
+Event density: 0.71814495
+Total points: 17266
+Valid moved points: 2287
+Movement ratio: 0.13245685161589252
+Event density: 0.70295435
+Total points: 17184
+Valid moved points: 2551
+Movement ratio: 0.14845204841713222
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+Event density: 0.6843135
+Total points: 17490
+Valid moved points: 3380
+Movement ratio: 0.19325328759291024
+Event density: 0.68600965
+Total points: 17334
+Valid moved points: 2651
+Movement ratio: 0.1529364255220953
+Event density: 0.71814495
+Total points: 17266
+Valid moved points: 2287
+Movement ratio: 0.13245685161589252
+Event density: 0.70295435
+Total points: 17184
+Valid moved points: 2551
+Movement ratio: 0.14845204841713222
+Event density: 0.70086527
+Total points: 17110
+Valid moved points: 1848
+Movement ratio: 0.10800701344243133
+Total points: 7814
+Valid moved points: 1136
+Movement ratio: 0.14538008702329153
+0000000000->0000000001: original_mean_error_px=10.586570 original_median_error_px=9.552177 rgb_only_mean_error_px=10.479936 rgb_only_median_error_px=9.478974 corrected_mean_error_px=1.385679 corrected_median_error_px=1.275681 matches=7423
+Total points: 8094
+Valid moved points: 990
+Movement ratio: 0.1223128243143069
+0000000001->0000000002: original_mean_error_px=13.181561 original_median_error_px=10.869271 rgb_only_mean_error_px=13.031634 rgb_only_median_error_px=10.755993 corrected_mean_error_px=1.353708 corrected_median_error_px=1.252440 matches=7695
+Total points: 4181
+Valid moved points: 356
+Movement ratio: 0.08514709399665152
+0000000002->0000000003: original_mean_error_px=17.594360 original_median_error_px=13.815542 rgb_only_mean_error_px=16.537554 rgb_only_median_error_px=13.325684 corrected_mean_error_px=1.398896 corrected_median_error_px=1.277758 matches=3972
+Total points: 7056
+Valid moved points: 924
+Movement ratio: 0.13095238095238096
+0000000003->0000000004: original_mean_error_px=11.128847 original_median_error_px=10.088917 rgb_only_mean_error_px=11.002281 rgb_only_median_error_px=10.005380 corrected_mean_error_px=1.357366 corrected_median_error_px=1.248552 matches=6708
+Total points: 5427
+Valid moved points: 466
+Movement ratio: 0.08586696148885203
+0000000004->0000000005: original_mean_error_px=15.942626 original_median_error_px=13.878469 rgb_only_mean_error_px=15.289124 rgb_only_median_error_px=13.290455 corrected_mean_error_px=1.382677 corrected_median_error_px=1.267226 matches=5159
+Original temporal inconsistency mean error: 13.140852 px
+Original temporal inconsistency median error: 11.047899 px
+RGB-only temporal inconsistency mean error: 12.772913 px
+RGB-only temporal inconsistency median error: 10.794027 px
+Corrected temporal inconsistency mean error: 1.372797 px
+Corrected temporal inconsistency median error: 1.261645 px
+Image self-consistency error: 2.126623 px
+Temporal distortion (statistical): YES
+Event density: 0.6843135
+Total points: 17490
+Valid moved points: 3380
+Movement ratio: 0.19325328759291024
+Event density: 0.68600965
+Total points: 17334
+Valid moved points: 2702
+Movement ratio: 0.15587862005307487
+Event density: 0.71814495
+Total points: 17266
+Valid moved points: 2422
+Movement ratio: 0.14027568631993514
+Event density: 0.70295435
+Total points: 17184
+Valid moved points: 2299
+Movement ratio: 0.1337872439478585
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+Event density: 0.6843135
+Total points: 17490
+Valid moved points: 3380
+Movement ratio: 0.19325328759291024
+Event density: 0.68600965
+Total points: 17334
+Valid moved points: 2702
+Movement ratio: 0.15587862005307487
+Event density: 0.71814495
+Total points: 17266
+Valid moved points: 2422
+Movement ratio: 0.14027568631993514
+Event density: 0.70295435
+Total points: 17184
+Valid moved points: 2299
+Movement ratio: 0.1337872439478585
+Event density: 0.70086527
+Total points: 17110
+Valid moved points: 1733
+Movement ratio: 0.10128579777907656
+Total points: 7817
+Valid moved points: 1136
+Movement ratio: 0.1453242932071127
+0000000000->0000000001: original_mean_error_px=10.589099 original_median_error_px=9.552048 rgb_only_mean_error_px=10.480894 rgb_only_median_error_px=9.475610 corrected_mean_error_px=1.385674 corrected_median_error_px=1.275730 matches=7426
+Total points: 8261
+Valid moved points: 1071
+Movement ratio: 0.12964532138966225
+0000000001->0000000002: original_mean_error_px=11.767096 original_median_error_px=9.848148 rgb_only_mean_error_px=11.654568 rgb_only_median_error_px=9.754826 corrected_mean_error_px=1.355494 corrected_median_error_px=1.253246 matches=7853
+Total points: 4250
+Valid moved points: 452
+Movement ratio: 0.1063529411764706
+0000000002->0000000003: original_mean_error_px=15.620883 original_median_error_px=12.461939 rgb_only_mean_error_px=15.057527 rgb_only_median_error_px=12.135586 corrected_mean_error_px=1.387310 corrected_median_error_px=1.270133 matches=4037
+Total points: 7162
+Valid moved points: 788
+Movement ratio: 0.1100251326445127
+0000000003->0000000004: original_mean_error_px=11.437934 original_median_error_px=11.004528 rgb_only_mean_error_px=11.381914 rgb_only_median_error_px=10.886495 corrected_mean_error_px=1.350320 corrected_median_error_px=1.247556 matches=6808
+Total points: 5449
+Valid moved points: 455
+Movement ratio: 0.08350155991925123
+0000000004->0000000005: original_mean_error_px=14.450489 original_median_error_px=13.056917 rgb_only_mean_error_px=14.157619 rgb_only_median_error_px=12.607641 corrected_mean_error_px=1.380642 corrected_median_error_px=1.267480 matches=5180
+Original temporal inconsistency mean error: 12.357084 px
+Original temporal inconsistency median error: 10.714863 px
+RGB-only temporal inconsistency mean error: 12.151908 px
+RGB-only temporal inconsistency median error: 10.555167 px
+Corrected temporal inconsistency mean error: 1.369795 px
+Corrected temporal inconsistency median error: 1.260674 px
+Image self-consistency error: 3.320125 px
+Temporal distortion (statistical): YES
+==============================
+DATASET: 2011_09_26_drive_0013_sync
+=======================
+
+--- NO SMOOTHING ---
+Original: 13.140852 px
+RGB-only: 12.772913 px
+Corrected: 1.372797 px
+Improvement: 11.768055 px (89.55 %)
+
+--- WITH SMOOTHING ---
+Original: 12.357084 px
+RGB-only: 12.151908 px
+Corrected: 1.369795 px
+Improvement: 10.987289 px (88.91 %)
+
+--- SMOOTHING EFFECT ---
+Original change: 0.783768 px
+RGB-only change: 0.621005 px
+Corrected change: 0.003002 px
+
+Tr_velo_to_cam (4x4):
+[[ 7.533745e-03 -9.999714e-01 -6.166020e-04 -4.069766e-03]
+ [ 1.480249e-02  7.280733e-04 -9.998902e-01 -7.631618e-02]
+ [ 9.998621e-01  7.523790e-03  1.480755e-02 -2.717806e-01]
+ [ 0.000000e+00  0.000000e+00  0.000000e+00  1.000000e+00]]
+Tr translation (m): tx=-0.004070, ty=-0.076316, tz=-0.271781
+P_rect_02 (3x4):
+[[7.215377e+02 0.000000e+00 6.095593e+02 4.485728e+01]
+ [0.000000e+00 7.215377e+02 1.728540e+02 2.163791e-01]
+ [0.000000e+00 0.000000e+00 1.000000e+00 2.745884e-03]]
+R_rect (4x4):
+[[ 0.9999239   0.00983776 -0.00744505  0.        ]
+ [-0.0098698   0.9999421  -0.00427846  0.        ]
+ [ 0.00740253  0.00435161  0.9999631   0.        ]
+ [ 0.          0.          0.          1.        ]]
+R_rect max deviation from identity: 9.869795e-03
+Event density: 0.07129791
+Total points: 18783
+Valid moved points: 1133
+Movement ratio: 0.06032050258212213
+Event density: 0.08130757
+Total points: 18768
+Valid moved points: 953
+Movement ratio: 0.050777919863597615
+Event density: 0.09049705
+Total points: 18787
+Valid moved points: 1285
+Movement ratio: 0.0683983605684782
+Event density: 0.09368116
+Total points: 18787
+Valid moved points: 1186
+Movement ratio: 0.06312875924841646
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+Event density: 0.07129791
+Total points: 18783
+Valid moved points: 1133
+Movement ratio: 0.06032050258212213
+Event density: 0.08130757
+Total points: 18768
+Valid moved points: 953
+Movement ratio: 0.050777919863597615
+Event density: 0.09049705
+Total points: 18787
+Valid moved points: 1285
+Movement ratio: 0.0683983605684782
+Event density: 0.09368116
+Total points: 18787
+Valid moved points: 1186
+Movement ratio: 0.06312875924841646
+Event density: 0.085221685
+Total points: 18799
+Valid moved points: 918
+Movement ratio: 0.0488323847013139
+Total points: 1257
+Valid moved points: 370
+Movement ratio: 0.294351630867144
+0000000000->0000000001: original_mean_error_px=5.902467 original_median_error_px=5.635071 rgb_only_mean_error_px=5.894336 rgb_only_median_error_px=5.601335 corrected_mean_error_px=1.542731 corrected_median_error_px=1.384171 matches=1194
+Total points: 1073
+Valid moved points: 181
+Movement ratio: 0.16868592730661697
+0000000001->0000000002: original_mean_error_px=8.496634 original_median_error_px=8.209144 rgb_only_mean_error_px=8.495173 rgb_only_median_error_px=8.191924 corrected_mean_error_px=1.544653 corrected_median_error_px=1.455847 matches=1019
+Total points: 1772
+Valid moved points: 547
+Movement ratio: 0.30869074492099324
+0000000002->0000000003: original_mean_error_px=6.415946 original_median_error_px=5.516294 rgb_only_mean_error_px=6.415107 rgb_only_median_error_px=5.530641 corrected_mean_error_px=1.559085 corrected_median_error_px=1.524621 matches=1683
+Total points: 1689
+Valid moved points: 483
+Movement ratio: 0.28596802841918295
+0000000003->0000000004: original_mean_error_px=7.466572 original_median_error_px=5.909937 rgb_only_mean_error_px=7.475111 rgb_only_median_error_px=5.930639 corrected_mean_error_px=1.577200 corrected_median_error_px=1.524385 matches=1604
+Total points: 1327
+Valid moved points: 331
+Movement ratio: 0.24943481537302187
+0000000004->0000000005: original_mean_error_px=7.442804 original_median_error_px=6.536291 rgb_only_mean_error_px=7.438616 rgb_only_median_error_px=6.510389 corrected_mean_error_px=1.652529 corrected_median_error_px=1.585259 matches=1260
+Original temporal inconsistency mean error: 7.079581 px
+Original temporal inconsistency median error: 6.196918 px
+RGB-only temporal inconsistency mean error: 7.079268 px
+RGB-only temporal inconsistency median error: 6.192408 px
+Corrected temporal inconsistency mean error: 1.575736 px
+Corrected temporal inconsistency median error: 1.512887 px
+Image self-consistency error: 1.865813 px
+Temporal distortion (statistical): YES
+Event density: 0.07129791
+Total points: 18783
+Valid moved points: 1133
+Movement ratio: 0.06032050258212213
+Event density: 0.08130757
+Total points: 18768
+Valid moved points: 1020
+Movement ratio: 0.05434782608695652
+Event density: 0.09049705
+Total points: 18787
+Valid moved points: 1556
+Movement ratio: 0.0828232288284452
+Event density: 0.09368116
+Total points: 18787
+Valid moved points: 1386
+Movement ratio: 0.07377441848086443
+
+--- TEST 10: STATISTICAL TEMPORAL INCONSISTENCY ---
+Event density: 0.07129791
+Total points: 18783
+Valid moved points: 1133
+Movement ratio: 0.06032050258212213
+Event density: 0.08130757
+Total points: 18768
+Valid moved points: 1020
+Movement ratio: 0.05434782608695652
+Event density: 0.09049705
+Total points: 18787
+Valid moved points: 1556
+Movement ratio: 0.0828232288284452
+Event density: 0.09368116
+Total points: 18787
+Valid moved points: 1386
+Movement ratio: 0.07377441848086443
+Event density: 0.085221685
+Total points: 18799
+Valid moved points: 1146
+Movement ratio: 0.06096068939837226
+Total points: 1253
+Valid moved points: 372
+Movement ratio: 0.2968874700718276
+0000000000->0000000001: original_mean_error_px=5.898042 original_median_error_px=5.620482 rgb_only_mean_error_px=5.890213 rgb_only_median_error_px=5.573601 corrected_mean_error_px=1.541694 corrected_median_error_px=1.382688 matches=1190
+Total points: 1115
+Valid moved points: 218
+Movement ratio: 0.19551569506726457
+0000000001->0000000002: original_mean_error_px=6.810153 original_median_error_px=6.636599 rgb_only_mean_error_px=6.810052 rgb_only_median_error_px=6.555555 corrected_mean_error_px=1.549663 corrected_median_error_px=1.431759 matches=1059
+Total points: 2029
+Valid moved points: 656
+Movement ratio: 0.3233119763430261
+0000000002->0000000003: original_mean_error_px=5.059155 original_median_error_px=4.214698 rgb_only_mean_error_px=5.057558 rgb_only_median_error_px=4.206454 corrected_mean_error_px=1.529313 corrected_median_error_px=1.460450 matches=1927
+Total points: 1806
+Valid moved points: 529
+Movement ratio: 0.2929125138427464
+0000000003->0000000004: original_mean_error_px=5.950090 original_median_error_px=4.889709 rgb_only_mean_error_px=5.952552 rgb_only_median_error_px=4.898838 corrected_mean_error_px=1.580035 corrected_median_error_px=1.502439 matches=1715
+Total points: 1536
+Valid moved points: 406
+Movement ratio: 0.2643229166666667
+0000000004->0000000005: original_mean_error_px=5.422905 original_median_error_px=4.772897 rgb_only_mean_error_px=5.419939 rgb_only_median_error_px=4.773558 corrected_mean_error_px=1.636621 corrected_median_error_px=1.552500 matches=1459
+Original temporal inconsistency mean error: 5.727352 px
+Original temporal inconsistency median error: 5.026940 px
+RGB-only temporal inconsistency mean error: 5.725649 px
+RGB-only temporal inconsistency median error: 5.009904 px
+Corrected temporal inconsistency mean error: 1.567386 px
+Corrected temporal inconsistency median error: 1.476114 px
+Image self-consistency error: 2.749154 px
+Temporal distortion (statistical): YES
+==============================
+DATASET: 2011_09_26_drive_0017_sync
+=======================
+
+--- NO SMOOTHING ---
+Original: 7.079581 px
+RGB-only: 7.079268 px
+Corrected: 1.575736 px
+Improvement: 5.503845 px (77.74 %)
+
+--- WITH SMOOTHING ---
+Original: 5.727352 px
+RGB-only: 5.725649 px
+Corrected: 1.567386 px
+Improvement: 4.159966 px (72.63 %)
+
+--- SMOOTHING EFFECT ---
+Original change: 1.352229 px
+RGB-only change: 1.353619 px
+Corrected change: 0.008350 px
+
+==============================
+FINAL AGGREGATED RESULTS
+========================
+
+NO SMOOTHING:
+Avg Original: 11.537654 px
+Avg Corrected: 1.469180 px
+Avg Improvement: 85.96 %
+
+WITH SMOOTHING:
+Avg Original: 10.681430 px
+Avg Corrected: 1.467691 px
+Avg Improvement: 84.25 %
+
+---
+
+Best dataset improvement: 90.12 %
+Worst dataset improvement: 77.74 %
