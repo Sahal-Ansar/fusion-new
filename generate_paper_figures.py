@@ -304,18 +304,26 @@ def fig3_zoom_comparison(img_t, uv_orig, depth_orig, uv_corr, out_path):
         dmin, dmax, radius=3, x_off=x1, y_off=y1,
     )
 
-    # Displacement arrows: only for moved points with disp > 1 px and
-    # both endpoints inside the crop.
+    # Displacement arrows: draw only the 60 largest-displacement movers
+    # (> 3 px) with both endpoints inside the crop, to avoid clutter.
     ch, cw = right.shape[:2]
     moved_idx_crop = np.where(in_crop_moved)[0]
-    for i in moved_idx_crop:
-        if displacement[i] <= 1.0:
+    disp_in_crop = displacement[moved_idx_crop]
+    sort_order = np.argsort(disp_in_crop)[::-1]
+    moved_idx_crop_sorted = moved_idx_crop[sort_order]
+    arrow_count = 0
+    for i in moved_idx_crop_sorted:
+        if arrow_count >= 60:
+            break
+        if displacement[i] <= 3.0:
             continue
         start = (int(uv_orig[i, 0] - x1), int(uv_orig[i, 1] - y1))
         end = (int(uv_corr[i, 0] - x1), int(uv_corr[i, 1] - y1))
         if (0 <= start[0] < cw and 0 <= start[1] < ch and
                 0 <= end[0] < cw and 0 <= end[1] < ch):
-            cv2.arrowedLine(right, start, end, (0, 255, 0), 1, tipLength=0.4)
+            cv2.arrowedLine(right, start, end, (0, 220, 255), 1,
+                            tipLength=0.5)  # yellow arrows
+            arrow_count += 1
 
     cv2.putText(right, "After (Event-Guided)", (12, 32),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 3, cv2.LINE_AA)
@@ -344,11 +352,30 @@ def fig4_event_map(img_t, events, out_path):
     gray = cv2.cvtColor(img_t, cv2.COLOR_BGR2GRAY)
     gray_bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
 
-    event_vis = np.zeros_like(img_t, dtype=np.uint8)
-    event_vis[on_mask] = (255, 255, 255)   # ON -> white
-    event_vis[off_mask] = (200, 80, 0)     # OFF -> blue (BGR)
+    # Show events as boundaries of event clusters (not solid fill) so the
+    # scene stays readable even at high density. Interior of event regions
+    # is darkened slightly; the 2px-wide ring around each region is drawn
+    # in bright polarity colors.
+    on_uint8 = on_mask.astype(np.uint8) * 255
+    off_uint8 = off_mask.astype(np.uint8) * 255
 
-    result = cv2.addWeighted(gray_bgr, 0.30, event_vis, 0.70, 0)
+    thin_kernel = np.ones((3, 3), np.uint8)
+    on_eroded = cv2.erode(on_uint8, thin_kernel, iterations=2)
+    off_eroded = cv2.erode(off_uint8, thin_kernel, iterations=2)
+
+    # Boundary = original minus eroded. Safe in uint8: eroded ⊆ original.
+    on_boundary = on_uint8 - on_eroded
+    off_boundary = off_uint8 - off_eroded
+
+    result = gray_bgr.copy().astype(np.float32)
+
+    interior_mask = (on_eroded > 0) | (off_eroded > 0)
+    result[interior_mask] = result[interior_mask] * 0.5
+
+    result[on_boundary > 0] = [255, 255, 255]
+    result[off_boundary > 0] = [220, 100, 0]  # BGR -> orange-blue
+
+    result = np.clip(result, 0, 255).astype(np.uint8)
 
     cv2.imwrite(out_path, result)
     _report_saved(out_path)
