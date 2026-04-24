@@ -147,7 +147,7 @@ def fig1_before_correction(img_t, uv_orig, depth_orig, out_path):
     _report_saved(out_path)
 
 
-def fig2_after_correction(img_t, uv_orig, depth_orig, uv_corr, out_path):
+def fig2_after_correction(img_t, img_t1, uv_orig, depth_orig, uv_corr, out_path):
     """Side-by-side full-image comparison with displacement vectors on the right."""
     print("Generating fig2_after_correction...")
     H, W = img_t.shape[:2]
@@ -169,7 +169,9 @@ def fig2_after_correction(img_t, uv_orig, depth_orig, uv_corr, out_path):
                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
 
     # --- RIGHT: After ---
-    right = img_t.copy()
+    # Use img_t1 so corrected LiDAR is overlaid on the frame whose timestamp
+    # the correction predicts (roughly t + alpha * dt).
+    right = img_t1.copy()
 
     # Displacement with 1-to-1 index correspondence (new lidar_motion returns full array).
     displacement = np.linalg.norm(uv_corr - uv_orig, axis=1)
@@ -210,7 +212,7 @@ def fig2_after_correction(img_t, uv_orig, depth_orig, uv_corr, out_path):
     _report_saved(out_path)
 
 
-def fig3_zoom_comparison(img_t, uv_orig, depth_orig, uv_corr, out_path):
+def fig3_zoom_comparison(img_t, img_t1, uv_orig, depth_orig, uv_corr, out_path):
     """Edge-aware zoom crop showing displacement vectors side by side."""
     print("Generating fig3_zoom_comparison...")
 
@@ -288,7 +290,8 @@ def fig3_zoom_comparison(img_t, uv_orig, depth_orig, uv_corr, out_path):
                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
 
     # -------------------- Step C: right panel (After) --------------------
-    right = img_t[y1:y2, x1:x2].copy()
+    # Use img_t1 so corrected LiDAR sits on the frame its prediction targets.
+    right = img_t1[y1:y2, x1:x2].copy()
 
     in_crop_unmoved = in_crop & ~moved_mask
     in_crop_moved = in_crop & moved_mask
@@ -604,12 +607,12 @@ def main():
     )
 
     fig2_after_correction(
-        img_t, uv_orig, depth_orig, uv_corr,
+        img_t, img_t1, uv_orig, depth_orig, uv_corr,
         os.path.join(OUTPUT_DIR, "fig2_after_correction.png"),
     )
 
     fig3_zoom_comparison(
-        img_t, uv_orig, depth_orig, uv_corr,
+        img_t, img_t1, uv_orig, depth_orig, uv_corr,
         os.path.join(OUTPUT_DIR, "fig3_zoom_comparison.png"),
     )
 
