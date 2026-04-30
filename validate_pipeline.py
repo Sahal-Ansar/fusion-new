@@ -13,7 +13,11 @@ from flow import compute_rgb_flow, smooth_flow
 from lidar_motion import move_lidar_points_weighted
 from loader import load_image, load_lidar
 from main import process_frame
-from metrics import accumulate_eas_results, compare_eas
+from metrics import (
+    accumulate_eas_results,
+    compare_eas,
+    compare_stereo_consistency,
+)
 
 
 PROJECT_ROOT = r"C:\Users\sahaa\OneDrive\Desktop\Honors\fusion-revised1"
@@ -944,6 +948,125 @@ def _format_percent(value):
     return f"{value:.2f} %"
 
 
+def _summarize_stereo_results(results_list):
+    """Aggregate per-frame stereo-consistency dicts.
+
+    Mirrors ``metrics.accumulate_eas_results`` but with a stereo-specific
+    header so the printed summary cannot be confused with EAS output.
+    Frames where ``improvement_pct`` is non-finite (e.g. score_before
+    was zero) are excluded from the percentage statistics but still
+    contribute to the absolute-score statistics.
+
+    Args:
+        results_list: list of dicts produced by ``compare_stereo_consistency``.
+
+    Returns:
+        dict with keys n_frames, n_pct_frames, score_before_mean/std,
+        score_after_mean/std, improvement_pct_mean/std,
+        n_valid_before_mean, n_valid_after_mean.
+    """
+    if not results_list:
+        print("[Stereo] No stereo results to aggregate.")
+        return {
+            "n_frames": 0,
+            "n_pct_frames": 0,
+            "score_before_mean": float("nan"),
+            "score_before_std": float("nan"),
+            "score_after_mean": float("nan"),
+            "score_after_std": float("nan"),
+            "improvement_pct_mean": float("nan"),
+            "improvement_pct_std": float("nan"),
+            "n_valid_before_mean": float("nan"),
+            "n_valid_after_mean": float("nan"),
+        }
+
+    score_before = np.array(
+        [r["score_before"] for r in results_list], dtype=np.float64
+    )
+    score_after = np.array(
+        [r["score_after"] for r in results_list], dtype=np.float64
+    )
+    improvement_pct = np.array(
+        [r["improvement_pct"] for r in results_list], dtype=np.float64
+    )
+    n_valid_before = np.array(
+        [r["n_valid_before"] for r in results_list], dtype=np.float64
+    )
+    n_valid_after = np.array(
+        [r["n_valid_after"] for r in results_list], dtype=np.float64
+    )
+    pct_finite = np.isfinite(improvement_pct)
+
+    summary = {
+        "n_frames": int(len(results_list)),
+        "n_pct_frames": int(np.count_nonzero(pct_finite)),
+        "score_before_mean": float(np.mean(score_before)),
+        "score_before_std": float(np.std(score_before)),
+        "score_after_mean": float(np.mean(score_after)),
+        "score_after_std": float(np.std(score_after)),
+        "improvement_pct_mean": (
+            float(np.mean(improvement_pct[pct_finite]))
+            if np.any(pct_finite)
+            else float("nan")
+        ),
+        "improvement_pct_std": (
+            float(np.std(improvement_pct[pct_finite]))
+            if np.any(pct_finite)
+            else float("nan")
+        ),
+        "n_valid_before_mean": float(np.mean(n_valid_before)),
+        "n_valid_after_mean": float(np.mean(n_valid_after)),
+    }
+
+    print("=" * 56)
+    print("STEREO CONSISTENCY SUMMARY")
+    print("-" * 56)
+    print(f"Frames                : {summary['n_frames']}")
+    print(
+        "Score Before          : "
+        f"{summary['score_before_mean']:.6f} "
+        f"+/- {summary['score_before_std']:.6f}"
+    )
+    print(
+        "Score After           : "
+        f"{summary['score_after_mean']:.6f} "
+        f"+/- {summary['score_after_std']:.6f}"
+    )
+    print(
+        "Improvement (%)       : "
+        f"{summary['improvement_pct_mean']:+.2f} "
+        f"+/- {summary['improvement_pct_std']:.2f} "
+        f"(n={summary['n_pct_frames']})"
+    )
+    print(
+        "Valid pts (before/after): "
+        f"{summary['n_valid_before_mean']:.0f} / "
+        f"{summary['n_valid_after_mean']:.0f}"
+    )
+    print("=" * 56)
+    return summary
+
+
+def _json_finite_or_none(value):
+    """Return float(value) if finite, else None — for strict-JSON output."""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if np.isfinite(f) else None
+
+
+def _json_safe_summary(summary):
+    """Convert non-finite floats in a summary dict to None (strict JSON)."""
+    out = {}
+    for key, value in summary.items():
+        if isinstance(value, float):
+            out[key] = value if np.isfinite(value) else None
+        else:
+            out[key] = value
+    return out
+
+
 def run_validation_on_dataset(dataset_path):
     global DATASET_PATH
 
@@ -1003,59 +1126,154 @@ def run_validation_on_dataset(dataset_path):
     else:
         ea_improvement_percent = float("nan")
 
-    # ---------------- INDEPENDENT EDGE ALIGNMENT SCORE (EAS) ---------------- #
-    # Computed over consecutive frame pairs in the sequence, using the
-    # no-smoothing motion pipeline (the headline configuration). The score
-    # depends only on projected LiDAR depth and RGB image content, so it
-    # is fully independent of optical flow.
+    # -------------- INDEPENDENT FLOW-FREE METRICS (EAS + STEREO) -------------- #
+    # Computed over consecutive frame pairs in the sequence using the
+    # no-smoothing motion pipeline (the headline configuration). Both
+    # metrics depend only on projected LiDAR depth and RGB image content
+    # (left RGB for EAS, right RGB plus stereo geometry for stereo
+    # consistency), so neither uses optical flow as a reference signal.
     sequence_name = os.path.basename(dataset_path)
+
+    # Right-camera calibration and image directory for the stereo metric.
+    # Treated as optional: missing P_rect_03 or image_03/data degrades to
+    # an EAS-only run with a printed warning.
+    p_rect_right = None
+    right_image_dir = os.path.join(DATASET_PATH, "image_03", "data")
+    try:
+        _, p_rect_right_candidate = parse_calib_cam_to_cam(
+            os.path.join(DATASET_PATH, "calib_cam_to_cam.txt"),
+            camera_id="03",
+        )
+    except (FileNotFoundError, KeyError, ValueError) as exc:
+        print(
+            f"[Stereo] Warning: cannot load P_rect_03 for {sequence_name}: "
+            f"{exc}; stereo metric disabled."
+        )
+        p_rect_right_candidate = None
+
+    if p_rect_right_candidate is not None:
+        if not os.path.isdir(right_image_dir):
+            print(
+                f"[Stereo] Warning: image_03 directory missing at "
+                f"{right_image_dir}; stereo metric disabled."
+            )
+        else:
+            p_rect_right = p_rect_right_candidate
+
     print("")
-    print(f"=== EAS (Edge Alignment Score) — {sequence_name} ===")
+    print(f"=== Flow-independent metrics — {sequence_name} ===")
 
     eas_motion_pairs = _build_motion_frame_pairs(
         temporal_traced_frames, use_smoothing=False
     )
 
     eas_results_full = []
-    eas_per_frame_for_json = []
+    stereo_results_full = []
+    per_frame_for_json = []
     for motion_pair in eas_motion_pairs:
         frame_t_name = motion_pair.original_t.name
         frame_t1_name = motion_pair.original_t1.name
-        print(f"--- EAS pair: {frame_t_name} -> {frame_t1_name} ---")
+        print(f"--- Pair: {frame_t_name} -> {frame_t1_name} ---")
 
-        result = compare_eas(
+        eas_result = compare_eas(
             uv_before=motion_pair.original_t.uv,
             depth_before=motion_pair.original_t.depth,
             uv_after=motion_pair.corrected_uv,
             depth_after=motion_pair.corrected_depth,
             image_bgr=motion_pair.original_t1.image,
         )
-        eas_results_full.append(result)
+        eas_results_full.append(eas_result)
 
-        improvement_pct_value = result["improvement_pct"]
-        improvement_pct_json = (
-            float(improvement_pct_value)
-            if np.isfinite(improvement_pct_value)
-            else None
-        )
-        eas_per_frame_for_json.append(
-            {
-                "frame_t": frame_t_name,
-                "frame_t1": frame_t1_name,
-                "score_before": float(result["score_before"]),
-                "score_after": float(result["score_after"]),
-                "improvement": float(result["improvement"]),
-                "improvement_pct": improvement_pct_json,
-            }
-        )
+        entry = {
+            "frame_t": frame_t_name,
+            "frame_t1": frame_t1_name,
+            "eas_before": float(eas_result["score_before"]),
+            "eas_after": float(eas_result["score_after"]),
+            "eas_improvement": float(eas_result["improvement"]),
+            "eas_improvement_pct": _json_finite_or_none(
+                eas_result["improvement_pct"]
+            ),
+            "stereo_before": None,
+            "stereo_after": None,
+            "stereo_improvement": None,
+            "stereo_improvement_pct": None,
+            "stereo_n_valid_before": None,
+            "stereo_n_valid_after": None,
+        }
+
+        if p_rect_right is not None:
+            right_image_path = os.path.join(
+                right_image_dir, frame_t1_name + ".png"
+            )
+            try:
+                image_right = load_image(right_image_path)
+            except (FileNotFoundError, ValueError) as exc:
+                print(
+                    f"[Stereo] Warning: cannot load right image "
+                    f"{right_image_path}: {exc}"
+                )
+            else:
+                stereo_result = compare_stereo_consistency(
+                    uv_before=motion_pair.original_t.uv,
+                    depth_before=motion_pair.original_t.depth,
+                    uv_after=motion_pair.corrected_uv,
+                    depth_after=motion_pair.corrected_depth,
+                    image_right_bgr=image_right,
+                    p_rect_left=p_rect,
+                    p_rect_right=p_rect_right,
+                )
+                stereo_results_full.append(stereo_result)
+                entry["stereo_before"] = float(stereo_result["score_before"])
+                entry["stereo_after"] = float(stereo_result["score_after"])
+                entry["stereo_improvement"] = float(
+                    stereo_result["improvement"]
+                )
+                entry["stereo_improvement_pct"] = _json_finite_or_none(
+                    stereo_result["improvement_pct"]
+                )
+                entry["stereo_n_valid_before"] = int(
+                    stereo_result["n_valid_before"]
+                )
+                entry["stereo_n_valid_after"] = int(
+                    stereo_result["n_valid_after"]
+                )
+
+        per_frame_for_json.append(entry)
 
     eas_summary = accumulate_eas_results(eas_results_full)
+    stereo_summary = _summarize_stereo_results(stereo_results_full)
 
-    eas_summary_json = {
-        key: (float(value) if isinstance(value, float) and np.isfinite(value)
-              else (None if isinstance(value, float) else value))
-        for key, value in eas_summary.items()
-    }
+    # Side-by-side per-dataset summary (epsilon, EAS, Stereo).
+    print("")
+    print(f"=== {sequence_name} | side-by-side metrics ===")
+    epsilon_before = no_smoothing_metrics["original_temporal_mean_px"]
+    epsilon_after = no_smoothing_metrics["corrected_temporal_mean_px"]
+    print(
+        "epsilon (no-smoothing mean px): "
+        f"{epsilon_before:.6f} -> {epsilon_after:.6f} "
+        f"({no_smoothing_improvement_percent:+.2f}%)"
+    )
+    print(
+        "EAS                           : "
+        f"{eas_summary['score_before_mean']:.6f} -> "
+        f"{eas_summary['score_after_mean']:.6f} "
+        f"({eas_summary['improvement_pct_mean']:+.2f}%)"
+    )
+    if stereo_summary["n_frames"] > 0:
+        print(
+            "Stereo Consistency            : "
+            f"{stereo_summary['score_before_mean']:.6f} -> "
+            f"{stereo_summary['score_after_mean']:.6f} "
+            f"({stereo_summary['improvement_pct_mean']:+.2f}%)"
+        )
+    else:
+        print(
+            "Stereo Consistency            : n/a "
+            "(right camera unavailable)"
+        )
+
+    eas_summary_json = _json_safe_summary(eas_summary)
+    stereo_summary_json = _json_safe_summary(stereo_summary)
     json_path = os.path.join(TEST_LOG_DIR, f"{sequence_name}_eas.json")
     try:
         os.makedirs(TEST_LOG_DIR, exist_ok=True)
@@ -1064,16 +1282,19 @@ def run_validation_on_dataset(dataset_path):
                 {
                     "dataset_name": sequence_name,
                     "dataset_path": dataset_path,
-                    "per_frame": eas_per_frame_for_json,
-                    "summary": eas_summary_json,
+                    "per_frame": per_frame_for_json,
+                    "eas_summary": eas_summary_json,
+                    "stereo_summary": stereo_summary_json,
                 },
                 f,
                 indent=2,
                 allow_nan=False,
             )
-        print(f"EAS JSON written: {json_path}")
+        print(f"Metrics JSON written: {json_path}")
     except (OSError, TypeError, ValueError) as exc:
-        print(f"[EAS] Warning: failed to write JSON to {json_path}: {exc}")
+        print(
+            f"[Metrics] Warning: failed to write JSON to {json_path}: {exc}"
+        )
 
     return {
         "dataset_path": dataset_path,
@@ -1105,6 +1326,19 @@ def run_validation_on_dataset(dataset_path):
             "after_median": no_smoothing_metrics["edge_align_after_median_px"],
             "after_within_2px": no_smoothing_metrics["edge_align_after_within_2px"],
             "improvement_percent": ea_improvement_percent,
+        },
+        "eas_score": {
+            "before_mean": eas_summary["score_before_mean"],
+            "after_mean": eas_summary["score_after_mean"],
+            "improvement_pct_mean": eas_summary["improvement_pct_mean"],
+            "n_frames": eas_summary["n_frames"],
+        },
+        "stereo_consistency": {
+            "before_mean": stereo_summary["score_before_mean"],
+            "after_mean": stereo_summary["score_after_mean"],
+            "improvement_pct_mean": stereo_summary["improvement_pct_mean"],
+            "n_frames": stereo_summary["n_frames"],
+            "available": stereo_summary["n_frames"] > 0,
         },
     }
 
@@ -1237,6 +1471,82 @@ def run_all_datasets():
     mean_after = f"{_mean_of(edge_after_vals):.3f}" if edge_after_vals else "n/a"
     mean_impr = f"{_mean_of(edge_impr_vals):+.2f} %" if edge_impr_vals else "n/a"
     print(f"{'Mean':<22}{mean_before:>14}{mean_after:>14}{mean_impr:>14}")
+
+    # -------- Cross-dataset EAS and Stereo Consistency summary --------
+    # Aggregates over all datasets in DATASETS. Per-dataset values that
+    # are None or non-finite (e.g. stereo disabled because image_03 was
+    # missing, or improvement_pct_mean undefined when score_before was
+    # zero) are excluded from the mean +/- std and the contributing
+    # count is reported alongside.
+    def _is_finite_float(value):
+        if value is None:
+            return False
+        if not isinstance(value, (int, float)):
+            return False
+        return bool(np.isfinite(float(value)))
+
+    def _fmt_mean_std_score(values):
+        if not values:
+            return "n/a"
+        return (
+            f"{float(np.mean(values)):.6f} "
+            f"+/- {float(np.std(values)):.6f} "
+            f"(n={len(values)})"
+        )
+
+    def _fmt_mean_std_pct(values):
+        if not values:
+            return "n/a"
+        return (
+            f"{float(np.mean(values)):+.2f} "
+            f"+/- {float(np.std(values)):.2f} % "
+            f"(n={len(values)})"
+        )
+
+    eas_before_vals = []
+    eas_after_vals = []
+    eas_impr_vals = []
+    stereo_before_vals = []
+    stereo_after_vals = []
+    stereo_impr_vals = []
+    n_stereo_available = 0
+
+    for r in dataset_results:
+        eas = r.get("eas_score") or {}
+        if _is_finite_float(eas.get("before_mean")):
+            eas_before_vals.append(float(eas["before_mean"]))
+        if _is_finite_float(eas.get("after_mean")):
+            eas_after_vals.append(float(eas["after_mean"]))
+        if _is_finite_float(eas.get("improvement_pct_mean")):
+            eas_impr_vals.append(float(eas["improvement_pct_mean"]))
+
+        stereo = r.get("stereo_consistency") or {}
+        if stereo.get("available", False):
+            n_stereo_available += 1
+            if _is_finite_float(stereo.get("before_mean")):
+                stereo_before_vals.append(float(stereo["before_mean"]))
+            if _is_finite_float(stereo.get("after_mean")):
+                stereo_after_vals.append(float(stereo["after_mean"]))
+            if _is_finite_float(stereo.get("improvement_pct_mean")):
+                stereo_impr_vals.append(float(stereo["improvement_pct_mean"]))
+
+    print("")
+    print("FLOW-INDEPENDENT METRICS — CROSS-DATASET AGGREGATE:")
+    print(f"Total datasets: {len(dataset_results)}")
+    print("")
+    print("EAS (Edge Alignment Score):")
+    print(f"  Before mean : {_fmt_mean_std_score(eas_before_vals)}")
+    print(f"  After mean  : {_fmt_mean_std_score(eas_after_vals)}")
+    print(f"  Improvement : {_fmt_mean_std_pct(eas_impr_vals)}")
+    print("")
+    print("Stereo Consistency:")
+    print(
+        f"  Datasets with right camera: "
+        f"{n_stereo_available} / {len(dataset_results)}"
+    )
+    print(f"  Before mean : {_fmt_mean_std_score(stereo_before_vals)}")
+    print(f"  After mean  : {_fmt_mean_std_score(stereo_after_vals)}")
+    print(f"  Improvement : {_fmt_mean_std_pct(stereo_impr_vals)}")
 
 
 if __name__ == "__main__":

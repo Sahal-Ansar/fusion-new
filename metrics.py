@@ -364,3 +364,281 @@ def accumulate_eas_results(
     print("=" * 56)
 
     return summary
+
+
+# =====================================================================
+#                    STEREO REPROJECTION CONSISTENCY
+# ---------------------------------------------------------------------
+# A second flow-independent metric. After temporal correction the 3-D
+# positions of the LiDAR points have not changed, only their image
+# coordinates. So if the corrected 2-D positions are more accurate, the
+# expected stereo reprojection (left -> right via known stereo geometry)
+# should land more often on RGB edges in the right image.
+# =====================================================================
+
+
+# Physically plausible depth window for KITTI passenger-car LiDAR.
+# Points outside this range are excluded from disparity computation.
+_STEREO_DEPTH_MIN_M = 0.1
+_STEREO_DEPTH_MAX_M = 80.0
+
+
+def compute_stereo_reprojection(
+    uv_left: np.ndarray,
+    depth: np.ndarray,
+    p_rect_left: np.ndarray,
+    p_rect_right: np.ndarray,
+    image_shape: Tuple[int, ...],
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Project left-camera LiDAR points into the right rectified image.
+
+    For rectified KITTI stereo the right-image position of a 3-D point
+    that projects to ``(u_L, v_L)`` with depth ``Z`` is given by
+    horizontal disparity::
+
+        disparity = f * B / Z
+        u_R       = u_L - disparity
+        v_R       = v_L      # rows are aligned in rectified stereo
+
+    where ``f = p_rect_left[0, 0]`` and ``B = |p_rect_right[0, 3] /
+    p_rect_right[0, 0]|`` is the stereo baseline in metres.
+
+    Args:
+        uv_left: (N, 2) float32, left-image pixel coordinates (u, v).
+        depth: (N,) float32, camera-Z depth in metres, row-aligned with
+            ``uv_left``.
+        p_rect_left: (3, 4) float64 left-camera projection matrix.
+        p_rect_right: (3, 4) float64 right-camera projection matrix.
+        image_shape: (H, W, ...) shape of the right image (or any
+            shape sharing the same width/height after rectification).
+
+    Returns:
+        uv_right: (M, 2) float32, valid right-image pixel coordinates
+            for the subset of input points that produced an in-bounds
+            disparity (M <= N).
+        valid_mask: (N,) bool, ``True`` where the corresponding input
+            point produced a valid right-image reprojection.
+    """
+    assert uv_left.ndim == 2 and uv_left.shape[1] == 2, (
+        f"uv_left must be (N, 2), got {uv_left.shape}"
+    )
+    assert depth.ndim == 1, f"depth must be (N,), got {depth.shape}"
+    assert uv_left.shape[0] == depth.shape[0], (
+        f"uv_left and depth length mismatch: "
+        f"{uv_left.shape[0]} vs {depth.shape[0]}"
+    )
+    assert np.asarray(p_rect_left).shape == (3, 4), (
+        f"p_rect_left must be (3, 4), got {np.asarray(p_rect_left).shape}"
+    )
+    assert np.asarray(p_rect_right).shape == (3, 4), (
+        f"p_rect_right must be (3, 4), got {np.asarray(p_rect_right).shape}"
+    )
+    assert len(image_shape) >= 2, (
+        f"image_shape must have at least 2 dims, got {image_shape}"
+    )
+
+    n_input = int(uv_left.shape[0])
+    valid_mask = np.zeros((n_input,), dtype=bool)
+    if n_input == 0:
+        print("[Stereo] Warning: empty input — returning zero reprojections.")
+        return np.empty((0, 2), dtype=np.float32), valid_mask
+
+    p_left = np.asarray(p_rect_left, dtype=np.float64)
+    p_right = np.asarray(p_rect_right, dtype=np.float64)
+
+    f = float(p_left[0, 0])
+    p_right_fx = float(p_right[0, 0])
+    if not np.isfinite(f) or f <= 0.0:
+        print(f"[Stereo] Warning: invalid focal length f={f}; aborting.")
+        return np.empty((0, 2), dtype=np.float32), valid_mask
+    if not np.isfinite(p_right_fx) or abs(p_right_fx) < 1e-9:
+        print(
+            "[Stereo] Warning: invalid right focal length "
+            f"p_rect_right[0,0]={p_right_fx}; aborting."
+        )
+        return np.empty((0, 2), dtype=np.float32), valid_mask
+
+    baseline_m = abs(float(p_right[0, 3]) / p_right_fx)
+    if not np.isfinite(baseline_m) or baseline_m <= 0.0:
+        print(
+            f"[Stereo] Warning: invalid baseline B={baseline_m} m; aborting."
+        )
+        return np.empty((0, 2), dtype=np.float32), valid_mask
+
+    h, w = int(image_shape[0]), int(image_shape[1])
+    u_left = np.asarray(uv_left[:, 0], dtype=np.float64)
+    v_left = np.asarray(uv_left[:, 1], dtype=np.float64)
+    z = np.asarray(depth, dtype=np.float64)
+
+    finite = (
+        np.isfinite(u_left) & np.isfinite(v_left) & np.isfinite(z)
+    )
+    depth_ok = (z >= _STEREO_DEPTH_MIN_M) & (z <= _STEREO_DEPTH_MAX_M)
+    safe = finite & depth_ok
+
+    if not np.any(safe):
+        print(
+            "[Stereo] Warning: no points within physically plausible "
+            f"depth range [{_STEREO_DEPTH_MIN_M}, {_STEREO_DEPTH_MAX_M}] m."
+        )
+        return np.empty((0, 2), dtype=np.float32), valid_mask
+
+    disparity = np.zeros_like(z)
+    disparity[safe] = (f * baseline_m) / z[safe]
+
+    # Disparities exceeding image width are unphysical (would push the
+    # right-image point off-screen by more than the entire frame).
+    disparity_ok = safe & (disparity < float(w)) & (disparity >= 0.0)
+
+    u_right = u_left - disparity
+    v_right = v_left
+
+    in_bounds = (
+        disparity_ok
+        & (u_right >= 0.0)
+        & (u_right < float(w))
+        & (v_right >= 0.0)
+        & (v_right < float(h))
+    )
+
+    valid_mask = in_bounds
+    uv_right = np.column_stack(
+        (u_right[in_bounds], v_right[in_bounds])
+    ).astype(np.float32)
+
+    n_dropped = int(n_input - int(np.count_nonzero(valid_mask)))
+    if n_dropped > 0:
+        print(
+            f"[Stereo] Dropped {n_dropped}/{n_input} points "
+            "(depth out of range, invalid disparity, or off the right image)."
+        )
+
+    return uv_right, valid_mask
+
+
+def stereo_consistency_score(
+    uv_left: np.ndarray,
+    depth: np.ndarray,
+    image_right_bgr: np.ndarray,
+    p_rect_left: np.ndarray,
+    p_rect_right: np.ndarray,
+) -> Tuple[float, np.ndarray, int]:
+    """Score how often left->right reprojections land on right-image edges.
+
+    Each LiDAR point projected to the left image is mapped into the
+    right rectified image using known stereo geometry (no optical flow
+    involved). The right RGB image's dilated Canny edge map is sampled
+    at each reprojected location with nearest-neighbour rounding. The
+    mean of those samples is the score; higher means the reprojected
+    points coincide more often with intensity edges in the right view.
+
+    Args:
+        uv_left: (N, 2) float32 left-image pixel coordinates.
+        depth: (N,) float32 camera-Z depths in metres, row-aligned.
+        image_right_bgr: (H, W, 3) uint8 BGR right-camera image.
+        p_rect_left: (3, 4) left projection matrix.
+        p_rect_right: (3, 4) right projection matrix.
+
+    Returns:
+        score: scalar float in [0, 1] — mean right-image edge strength
+            sampled at the valid reprojected points. Returns 0.0 when
+            no points reproject into the right image.
+        uv_right: (M, 2) float32 right-image coordinates of the M
+            valid reprojections.
+        n_valid: int, number of valid reprojected points sampled.
+    """
+    assert image_right_bgr.ndim == 3 and image_right_bgr.shape[2] == 3, (
+        f"image_right_bgr must be (H, W, 3), got {image_right_bgr.shape}"
+    )
+
+    uv_right, valid_mask = compute_stereo_reprojection(
+        uv_left, depth, p_rect_left, p_rect_right, image_right_bgr.shape
+    )
+
+    n_valid = int(uv_right.shape[0])
+    if n_valid == 0:
+        print("Stereo Consistency Score: 0.000000 (0 valid points)")
+        return 0.0, uv_right, n_valid
+
+    rgb_edge_map = compute_rgb_edge_map(image_right_bgr)
+    h, w = rgb_edge_map.shape[:2]
+
+    u_idx = np.clip(np.rint(uv_right[:, 0]).astype(np.int64), 0, w - 1)
+    v_idx = np.clip(np.rint(uv_right[:, 1]).astype(np.int64), 0, h - 1)
+    samples = rgb_edge_map[v_idx, u_idx]
+
+    score = float(samples.mean())
+    print(
+        f"Stereo Consistency Score: {score:.6f} ({n_valid} valid points)"
+    )
+    _ = valid_mask  # kept for future callers that need per-input membership
+    return score, uv_right, n_valid
+
+
+def compare_stereo_consistency(
+    uv_before: np.ndarray,
+    depth_before: np.ndarray,
+    uv_after: np.ndarray,
+    depth_after: np.ndarray,
+    image_right_bgr: np.ndarray,
+    p_rect_left: np.ndarray,
+    p_rect_right: np.ndarray,
+) -> Dict[str, object]:
+    """Compare stereo-consistency scores before and after correction.
+
+    Args:
+        uv_before: (N, 2) uncorrected left-image coordinates.
+        depth_before: (N,) depths corresponding to ``uv_before``.
+        uv_after: (M, 2) corrected left-image coordinates.
+        depth_after: (M,) depths corresponding to ``uv_after``.
+        image_right_bgr: (H, W, 3) uint8 BGR right-camera image used
+            as the edge reference for both terms.
+        p_rect_left: (3, 4) left projection matrix.
+        p_rect_right: (3, 4) right projection matrix.
+
+    Returns:
+        Dict with keys:
+            - score_before: float
+            - score_after:  float
+            - improvement:  float, score_after - score_before
+            - improvement_pct: float, percent change vs score_before
+              (NaN if score_before == 0)
+            - uv_right_before: (M_b, 2) float32
+            - uv_right_after:  (M_a, 2) float32
+            - n_valid_before:  int
+            - n_valid_after:   int
+    """
+    score_before, uv_right_before, n_valid_before = stereo_consistency_score(
+        uv_before, depth_before, image_right_bgr, p_rect_left, p_rect_right
+    )
+    score_after, uv_right_after, n_valid_after = stereo_consistency_score(
+        uv_after, depth_after, image_right_bgr, p_rect_left, p_rect_right
+    )
+
+    improvement = score_after - score_before
+    if score_before > 0.0:
+        improvement_pct = (improvement / score_before) * 100.0
+    else:
+        print(
+            "[Stereo] Warning: score_before is zero — "
+            "improvement_pct undefined."
+        )
+        improvement_pct = float("nan")
+
+    print(f"Stereo Before: {score_before:.6f}")
+    print(f"Stereo After:  {score_after:.6f}")
+    print(
+        f"Stereo Improvement: {improvement:+.6f} "
+        f"({improvement_pct:+.2f}%)"
+    )
+
+    return {
+        "score_before": score_before,
+        "score_after": score_after,
+        "improvement": improvement,
+        "improvement_pct": improvement_pct,
+        "uv_right_before": uv_right_before,
+        "uv_right_after": uv_right_after,
+        "n_valid_before": n_valid_before,
+        "n_valid_after": n_valid_after,
+    }
