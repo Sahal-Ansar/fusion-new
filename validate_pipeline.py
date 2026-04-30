@@ -525,6 +525,56 @@ def _compute_edge_alignment(uv_int, image):
     }
 
 
+def compute_edge_alignment_error(image, uv_points, max_dist=20.0):
+    """
+    Compute edge alignment error: mean distance from each projected LiDAR
+    point to the nearest detected image edge.
+
+    This is an independent metric — it uses only the image edges and the
+    projected point positions, with no dependency on optical flow.
+
+    A lower value means LiDAR points are better aligned with scene boundaries.
+
+    Args:
+        image: BGR image (H, W, 3)
+        uv_points: (N, 2) float32 projected LiDAR point coordinates
+        max_dist: cap distance at this value to limit outlier influence
+
+    Returns:
+        mean_error: float, mean distance in pixels (lower = better alignment)
+        median_error: float, median distance in pixels
+        pct_within_2px: float, fraction of points within 2px of an edge
+    """
+    if uv_points.shape[0] == 0:
+        return float('nan'), float('nan'), float('nan')
+
+    # Detect edges using Canny on grayscale
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Mild blur before Canny to reduce noise sensitivity
+    blurred = cv2.GaussianBlur(gray, (5, 5), 1.0)
+    edges = cv2.Canny(blurred, 50, 150)
+
+    # Distance transform: each non-edge pixel gets its distance to the
+    # nearest edge pixel. distanceTransform treats zero pixels as the source,
+    # so we invert the edge image before calling it.
+    edge_inv = np.where(edges > 0, 0, 255).astype(np.uint8)
+    dist_map = cv2.distanceTransform(edge_inv, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
+
+    # Sample distance at each projected LiDAR point.
+    H, W = image.shape[:2]
+    u_idx = np.clip(np.rint(uv_points[:, 0]).astype(np.int32), 0, W - 1)
+    v_idx = np.clip(np.rint(uv_points[:, 1]).astype(np.int32), 0, H - 1)
+
+    distances = dist_map[v_idx, u_idx]
+    distances = np.minimum(distances, max_dist)  # cap outliers
+
+    mean_error = float(np.mean(distances))
+    median_error = float(np.median(distances))
+    pct_within_2px = float(np.mean(distances <= 2.0))
+
+    return mean_error, median_error, pct_within_2px
+
+
 def temporal_statistics_test(
     tr_velo_to_cam,
     r_rect,
@@ -787,6 +837,55 @@ def _evaluate_mode_metrics(traced_frames, temporal_frames, tr_velo_to_cam, r_rec
         rgb_only_edge_medians.append(rgb_only_metrics["median_px"])
         corrected_edge_medians.append(corrected_metrics["median_px"])
 
+    # ---- Edge alignment to Canny edges (independent metric) ----
+    # For each motion pair, compare uv_orig and uv_corr against edges in
+    # image_t (the frame used for projection).
+    ea_before_mean = []
+    ea_before_median = []
+    ea_before_pct2 = []
+    ea_after_mean = []
+    ea_after_median = []
+    ea_after_pct2 = []
+
+    for motion_pair in motion_pairs:
+        image_t = motion_pair.original_t.image
+        image_t1 = motion_pair.original_t1.image
+        uv_orig = np.asarray(motion_pair.original_t.uv, dtype=np.float32)
+        uv_corr = np.asarray(motion_pair.corrected_uv, dtype=np.float32)
+
+        if uv_orig.size > 0:
+            vo = np.isfinite(uv_orig[:, 0]) & np.isfinite(uv_orig[:, 1])
+            uv_orig_valid = uv_orig[vo]
+        else:
+            uv_orig_valid = uv_orig
+
+        if uv_corr.size > 0:
+            vc = np.isfinite(uv_corr[:, 0]) & np.isfinite(uv_corr[:, 1])
+            uv_corr_valid = uv_corr[vc]
+        else:
+            uv_corr_valid = uv_corr
+
+        # Before: uncorrected projection vs frame t edges (source frame).
+        # After:  corrected projection vs frame t+1 edges (target frame).
+        b_mean, b_med, b_pct = compute_edge_alignment_error(image_t, uv_orig_valid)
+        a_mean, a_med, a_pct = compute_edge_alignment_error(image_t1, uv_corr_valid)
+
+        if np.isfinite(b_mean):
+            ea_before_mean.append(b_mean)
+            ea_before_median.append(b_med)
+            ea_before_pct2.append(b_pct)
+        if np.isfinite(a_mean):
+            ea_after_mean.append(a_mean)
+            ea_after_median.append(a_med)
+            ea_after_pct2.append(a_pct)
+
+    edge_align_before_mean = float(np.mean(ea_before_mean)) if ea_before_mean else float("nan")
+    edge_align_before_median = float(np.mean(ea_before_median)) if ea_before_median else float("nan")
+    edge_align_before_pct2 = float(np.mean(ea_before_pct2)) if ea_before_pct2 else float("nan")
+    edge_align_after_mean = float(np.mean(ea_after_mean)) if ea_after_mean else float("nan")
+    edge_align_after_median = float(np.mean(ea_after_median)) if ea_after_median else float("nan")
+    edge_align_after_pct2 = float(np.mean(ea_after_pct2)) if ea_after_pct2 else float("nan")
+
     temporal_stats = temporal_statistics_test(
         tr_velo_to_cam,
         r_rect,
@@ -814,6 +913,12 @@ def _evaluate_mode_metrics(traced_frames, temporal_frames, tr_velo_to_cam, r_rec
         "original_edge_median_px": float(np.median(original_edge_medians)) if original_edge_medians else float("inf"),
         "rgb_only_edge_median_px": float(np.median(rgb_only_edge_medians)) if rgb_only_edge_medians else float("inf"),
         "corrected_edge_median_px": float(np.median(corrected_edge_medians)) if corrected_edge_medians else float("inf"),
+        "edge_align_before_mean_px": edge_align_before_mean,
+        "edge_align_before_median_px": edge_align_before_median,
+        "edge_align_before_within_2px": edge_align_before_pct2,
+        "edge_align_after_mean_px": edge_align_after_mean,
+        "edge_align_after_median_px": edge_align_after_median,
+        "edge_align_after_within_2px": edge_align_after_pct2,
         "distortion_ratio": distortion_ratio,
         "detected": temporal_stats["detected"],
     }
@@ -883,6 +988,19 @@ def run_validation_on_dataset(dataset_path):
         smoothing_metrics["corrected_temporal_mean_px"],
     )
 
+    # Independent edge-alignment metric (no flow dependency). Report the
+    # no_smoothing mode as the primary, since that is the headline pipeline.
+    ea_before_mean = no_smoothing_metrics["edge_align_before_mean_px"]
+    ea_after_mean = no_smoothing_metrics["edge_align_after_mean_px"]
+    if (
+        np.isfinite(ea_before_mean)
+        and np.isfinite(ea_after_mean)
+        and ea_before_mean > 0.0
+    ):
+        ea_improvement_percent = (ea_before_mean - ea_after_mean) / ea_before_mean * 100.0
+    else:
+        ea_improvement_percent = float("nan")
+
     return {
         "dataset_path": dataset_path,
         "dataset_name": os.path.basename(dataset_path),
@@ -904,6 +1022,15 @@ def run_validation_on_dataset(dataset_path):
             "original_change": no_smoothing_metrics["original_temporal_mean_px"] - smoothing_metrics["original_temporal_mean_px"],
             "rgb_only_change": no_smoothing_metrics["rgb_only_temporal_mean_px"] - smoothing_metrics["rgb_only_temporal_mean_px"],
             "corrected_change": no_smoothing_metrics["corrected_temporal_mean_px"] - smoothing_metrics["corrected_temporal_mean_px"],
+        },
+        "edge_alignment": {
+            "before_mean": ea_before_mean,
+            "before_median": no_smoothing_metrics["edge_align_before_median_px"],
+            "before_within_2px": no_smoothing_metrics["edge_align_before_within_2px"],
+            "after_mean": ea_after_mean,
+            "after_median": no_smoothing_metrics["edge_align_after_median_px"],
+            "after_within_2px": no_smoothing_metrics["edge_align_after_within_2px"],
+            "improvement_percent": ea_improvement_percent,
         },
     }
 
@@ -939,6 +1066,24 @@ def _print_dataset_results(result):
     print(f"Original change: {_format_px(smoothing_effect['original_change'])}")
     print(f"RGB-only change: {_format_px(smoothing_effect['rgb_only_change'])}")
     print(f"Corrected change: {_format_px(smoothing_effect['corrected_change'])}")
+    print("")
+    edge_align = result["edge_alignment"]
+    print("=== Edge Alignment Error (independent metric) ===")
+    print(
+        f"Before correction (vs frame t edges):   mean={edge_align['before_mean']:.3f} px, "
+        f"median={edge_align['before_median']:.3f} px, "
+        f"within_2px={edge_align['before_within_2px']:.1%}"
+    )
+    print(
+        f"After correction  (vs frame t+1 edges): mean={edge_align['after_mean']:.3f} px, "
+        f"median={edge_align['after_median']:.3f} px, "
+        f"within_2px={edge_align['after_within_2px']:.1%}"
+    )
+    improvement = edge_align['improvement_percent']
+    if np.isfinite(improvement):
+        print(f"Improvement: {improvement:.1f}% reduction in mean edge alignment error")
+    else:
+        print("Improvement: n/a")
     print("")
 
 
@@ -989,6 +1134,35 @@ def run_all_datasets():
     print("")
     print(f"Best dataset improvement: {_format_percent(best_dataset['no_smoothing']['improvement_percent'])}")
     print(f"Worst dataset improvement: {_format_percent(worst_dataset['no_smoothing']['improvement_percent'])}")
+
+    # -------- Cross-dataset edge alignment summary --------
+    print("")
+    print("EDGE ALIGNMENT ERROR — PER DATASET (independent metric):")
+    header = f"{'Dataset':<22}{'Before (px)':>14}{'After (px)':>14}{'Improvement':>14}"
+    print(header)
+    print("-" * len(header))
+    edge_before_vals = []
+    edge_after_vals = []
+    edge_impr_vals = []
+    for r in dataset_results:
+        ea = r["edge_alignment"]
+        before_s = f"{ea['before_mean']:.3f}" if np.isfinite(ea['before_mean']) else "n/a"
+        after_s = f"{ea['after_mean']:.3f}" if np.isfinite(ea['after_mean']) else "n/a"
+        if np.isfinite(ea['improvement_percent']):
+            impr_s = f"{ea['improvement_percent']:+.2f} %"
+            edge_impr_vals.append(ea['improvement_percent'])
+        else:
+            impr_s = "n/a"
+        if np.isfinite(ea['before_mean']):
+            edge_before_vals.append(ea['before_mean'])
+        if np.isfinite(ea['after_mean']):
+            edge_after_vals.append(ea['after_mean'])
+        print(f"{r['dataset_name']:<22}{before_s:>14}{after_s:>14}{impr_s:>14}")
+    print("-" * len(header))
+    mean_before = f"{_mean_of(edge_before_vals):.3f}" if edge_before_vals else "n/a"
+    mean_after = f"{_mean_of(edge_after_vals):.3f}" if edge_after_vals else "n/a"
+    mean_impr = f"{_mean_of(edge_impr_vals):+.2f} %" if edge_impr_vals else "n/a"
+    print(f"{'Mean':<22}{mean_before:>14}{mean_after:>14}{mean_impr:>14}")
 
 
 if __name__ == "__main__":

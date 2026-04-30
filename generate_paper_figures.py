@@ -108,32 +108,71 @@ def _load_frame(image_dir, files, idx):
 
 # ------------------------- Frame selection ---------------------------------- #
 
-def select_best_frame(image_dir, image_files):
+def select_visualization_frame():
     """
-    Auto-select the frame index (within a small candidate set) whose t -> t+1
-    pair yields the largest mean RGB optical-flow magnitude. This picks the
-    frame with the most visible motion -- the case where event-guided
-    correction matters most.
+    Search all four KITTI sequences for the frame pair whose mean
+    optical flow magnitude is closest to 5.0 px.
+    Returns (dataset_path, frame_idx, image_files, lidar_files).
     """
-    candidates = [0, 10, 20, 30, 40, 50, 60, 70, 80, 100, 120, 150]
+    TARGET_FLOW = 5.0
 
-    total = len(image_files)
-    candidates = [i for i in candidates if i + 1 < total]
+    all_datasets = [
+        "2011_09_26_drive_0009_sync",
+        "2011_09_26_drive_0005_sync",
+        "2011_09_26_drive_0013_sync",
+        "2011_09_26_drive_0017_sync",
+    ]
 
-    best_idx = candidates[0]
-    best_mag = -1.0
-    for i in candidates:
-        img_a = _load_frame(image_dir, image_files, i)
-        img_b = _load_frame(image_dir, image_files, i + 1)
-        flow = compute_rgb_flow(img_a, img_b)
-        mag = float(np.mean(np.linalg.norm(flow, axis=2)))
-        if mag > best_mag:
-            best_mag = mag
-            best_idx = i
+    candidates = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80]
 
-    best_idx = min(best_idx, total - 2)
-    print(f"Auto-selected frame index: {best_idx} with mean flow magnitude: {best_mag:.3f} px")
-    return best_idx
+    best_dataset = None
+    best_frame_idx = 0
+    best_mag = 0.0
+    best_diff = float('inf')
+    best_image_files = None
+    best_lidar_files = None
+
+    print("Scanning all datasets for best visualization frame...")
+    for ds_name in all_datasets:
+        ds_path = os.path.join(DATASETS_ROOT, ds_name)
+        img_dir = os.path.join(ds_path, "image_02", "data")
+        lid_dir = os.path.join(ds_path, "velodyne_points", "data")
+
+        try:
+            img_files = list_frame_files(img_dir, ".png")
+            lid_files = list_frame_files(lid_dir, ".bin")
+        except Exception:
+            continue
+
+        total = len(img_files)
+        valid_candidates = [i for i in candidates if i + 1 < total]
+
+        for i in valid_candidates:
+            try:
+                img_a = load_image(os.path.join(img_dir, img_files[i]))
+                img_b = load_image(os.path.join(img_dir, img_files[i + 1]))
+            except Exception:
+                continue
+
+            flow = compute_rgb_flow(img_a, img_b)
+            mag = float(np.mean(np.linalg.norm(flow, axis=2)))
+            diff = abs(mag - TARGET_FLOW)
+
+            print(f"  {ds_name} frame {i:3d}: {mag:.3f} px")
+
+            if diff < best_diff:
+                best_diff = diff
+                best_dataset = ds_path
+                best_frame_idx = i
+                best_mag = mag
+                best_image_files = img_files
+                best_lidar_files = lid_files
+
+    print(f"\nSelected: {os.path.basename(best_dataset)} "
+          f"frame {best_frame_idx} with mean flow {best_mag:.3f} px "
+          f"(target was {TARGET_FLOW:.1f} px)")
+
+    return best_dataset, best_frame_idx, best_image_files, best_lidar_files
 
 
 # ------------------------------- Figures ------------------------------------ #
@@ -205,8 +244,8 @@ def fig2_after_correction(img_t, img_t1, uv_orig, depth_orig, uv_corr, out_path)
     cv2.putText(right, "After Correction", (20, 35),
                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
 
-    divider = np.full((H, 3, 3), 255, dtype=np.uint8)
-    final_fig2 = np.hstack([left, divider, right])
+    divider = np.full((3, W, 3), 255, dtype=np.uint8)
+    final_fig2 = np.vstack([left, divider, right])
 
     cv2.imwrite(out_path, final_fig2)
     _report_saved(out_path)
@@ -562,21 +601,19 @@ def fig7_pipeline_diagram(out_path):
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # -------------------- Load calibration for dataset 0009 ------------------
-    calib_velo_path = os.path.join(DATASET_0009, "calib_velo_to_cam.txt")
-    calib_cam_path = os.path.join(DATASET_0009, "calib_cam_to_cam.txt")
+    # -------------------- STEP 0: Auto-select best frame across datasets ----
+    best_ds_path, BEST_FRAME_IDX, image_files, lidar_files = \
+        select_visualization_frame()
+
+    # -------------------- Calibration from the selected dataset ------------
+    calib_velo_path = os.path.join(best_ds_path, "calib_velo_to_cam.txt")
+    calib_cam_path = os.path.join(best_ds_path, "calib_cam_to_cam.txt")
 
     Tr = parse_calib_velo_to_cam(calib_velo_path)
     R_rect, P_rect = parse_calib_cam_to_cam(calib_cam_path, camera_id="02")
 
-    # -------------------- Frame listings ------------------------------------
-    image_dir = os.path.join(DATASET_0009, "image_02", "data")
-    lidar_dir = os.path.join(DATASET_0009, "velodyne_points", "data")
-    image_files = list_frame_files(image_dir, ".png")
-    lidar_files = list_frame_files(lidar_dir, ".bin")
-
-    # -------------------- STEP 0: Auto-select best frame --------------------
-    BEST_FRAME_IDX = select_best_frame(image_dir, image_files)
+    image_dir = os.path.join(best_ds_path, "image_02", "data")
+    lidar_dir = os.path.join(best_ds_path, "velodyne_points", "data")
 
     # -------------------- Load frames + LiDAR for chosen index --------------
     img_t = load_image(os.path.join(image_dir, image_files[BEST_FRAME_IDX]))
