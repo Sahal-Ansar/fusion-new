@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from flow import compute_rgb_flow, smooth_flow
 from lidar_motion import move_lidar_points_weighted
 from loader import load_image, load_lidar
 from main import process_frame
+from metrics import accumulate_eas_results, compare_eas
 
 
 PROJECT_ROOT = r"C:\Users\sahaa\OneDrive\Desktop\Honors\fusion-revised1"
@@ -1000,6 +1002,78 @@ def run_validation_on_dataset(dataset_path):
         ea_improvement_percent = (ea_before_mean - ea_after_mean) / ea_before_mean * 100.0
     else:
         ea_improvement_percent = float("nan")
+
+    # ---------------- INDEPENDENT EDGE ALIGNMENT SCORE (EAS) ---------------- #
+    # Computed over consecutive frame pairs in the sequence, using the
+    # no-smoothing motion pipeline (the headline configuration). The score
+    # depends only on projected LiDAR depth and RGB image content, so it
+    # is fully independent of optical flow.
+    sequence_name = os.path.basename(dataset_path)
+    print("")
+    print(f"=== EAS (Edge Alignment Score) — {sequence_name} ===")
+
+    eas_motion_pairs = _build_motion_frame_pairs(
+        temporal_traced_frames, use_smoothing=False
+    )
+
+    eas_results_full = []
+    eas_per_frame_for_json = []
+    for motion_pair in eas_motion_pairs:
+        frame_t_name = motion_pair.original_t.name
+        frame_t1_name = motion_pair.original_t1.name
+        print(f"--- EAS pair: {frame_t_name} -> {frame_t1_name} ---")
+
+        result = compare_eas(
+            uv_before=motion_pair.original_t.uv,
+            depth_before=motion_pair.original_t.depth,
+            uv_after=motion_pair.corrected_uv,
+            depth_after=motion_pair.corrected_depth,
+            image_bgr=motion_pair.original_t1.image,
+        )
+        eas_results_full.append(result)
+
+        improvement_pct_value = result["improvement_pct"]
+        improvement_pct_json = (
+            float(improvement_pct_value)
+            if np.isfinite(improvement_pct_value)
+            else None
+        )
+        eas_per_frame_for_json.append(
+            {
+                "frame_t": frame_t_name,
+                "frame_t1": frame_t1_name,
+                "score_before": float(result["score_before"]),
+                "score_after": float(result["score_after"]),
+                "improvement": float(result["improvement"]),
+                "improvement_pct": improvement_pct_json,
+            }
+        )
+
+    eas_summary = accumulate_eas_results(eas_results_full)
+
+    eas_summary_json = {
+        key: (float(value) if isinstance(value, float) and np.isfinite(value)
+              else (None if isinstance(value, float) else value))
+        for key, value in eas_summary.items()
+    }
+    json_path = os.path.join(TEST_LOG_DIR, f"{sequence_name}_eas.json")
+    try:
+        os.makedirs(TEST_LOG_DIR, exist_ok=True)
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "dataset_name": sequence_name,
+                    "dataset_path": dataset_path,
+                    "per_frame": eas_per_frame_for_json,
+                    "summary": eas_summary_json,
+                },
+                f,
+                indent=2,
+                allow_nan=False,
+            )
+        print(f"EAS JSON written: {json_path}")
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"[EAS] Warning: failed to write JSON to {json_path}: {exc}")
 
     return {
         "dataset_path": dataset_path,
