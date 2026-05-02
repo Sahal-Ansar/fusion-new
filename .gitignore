@@ -1,3 +1,5 @@
 # Ignore paper figures directories with generated images
 paper_figures*/
 research_paper/*.png
+test_logs_archive/
+test_logs1/*.json

@@ -205,6 +205,88 @@ def edge_alignment_score(
     return score, depth_edge_map, rgb_edge_map
 
 
+def sparse_point_eas(
+    uv: np.ndarray,
+    depth: np.ndarray,
+    image_bgr: np.ndarray,
+) -> Tuple[float, np.ndarray]:
+    """Sparse-Point EAS: mean RGB edge strength sampled at LiDAR points.
+
+    Unlike ``edge_alignment_score``, which averages the depth-edge x
+    RGB-edge product over every pixel of the image, this metric samples
+    the RGB edge map only at the projected LiDAR point locations. With
+    ~3% LiDAR coverage on KITTI, the dense formulation is dominated by
+    the 97% of pixels that contain no LiDAR signal, so artifacts from
+    sparse depth rasterization (e.g. point displacement smearing edges
+    across blank pixels) systematically drag the score down. Sampling
+    only at the points sidesteps that confound entirely.
+
+    Args:
+        uv: (N, 2) float32 projected pixel coordinates (u, v).
+        depth: (N,) float32 — kept for API consistency; not used.
+        image_bgr: (H, W, 3) uint8 BGR reference image.
+
+    Returns:
+        score: scalar float in [0, 1] — mean RGB edge strength at the
+            sampled point locations.
+        edge_strengths: (N,) float32 — per-point sampled edge values.
+    """
+    rgb_edge_map = compute_rgb_edge_map(image_bgr)
+    h, w = rgb_edge_map.shape[:2]
+
+    u_idx = np.clip(np.rint(uv[:, 0]).astype(np.int64), 0, w - 1)
+    v_idx = np.clip(np.rint(uv[:, 1]).astype(np.int64), 0, h - 1)
+    edge_strengths = rgb_edge_map[v_idx, u_idx]
+
+    score = float(np.mean(edge_strengths))
+    print(f"SPEAS: {score:.6f} ({len(uv)} points sampled)")
+    _ = depth
+    return score, edge_strengths
+
+
+def compare_speas(
+    uv_before: np.ndarray,
+    depth_before: np.ndarray,
+    uv_after: np.ndarray,
+    depth_after: np.ndarray,
+    image_bgr: np.ndarray,
+) -> Dict[str, object]:
+    """Compare Sparse-Point EAS before and after correction.
+
+    Args:
+        uv_before: (N, 2) uncorrected projected coordinates.
+        depth_before: (N,) depths corresponding to ``uv_before``.
+        uv_after: (M, 2) corrected projected coordinates.
+        depth_after: (M,) depths corresponding to ``uv_after``.
+        image_bgr: (H, W, 3) uint8 reference image used for both terms.
+
+    Returns:
+        Dict with keys ``score_before``, ``score_after``,
+        ``improvement``, ``improvement_pct``.
+    """
+    score_before, _ = sparse_point_eas(uv_before, depth_before, image_bgr)
+    score_after, _ = sparse_point_eas(uv_after, depth_after, image_bgr)
+
+    improvement = score_after - score_before
+    if score_before > 0.0:
+        improvement_pct = (improvement / score_before) * 100.0
+    else:
+        improvement_pct = 0.0
+
+    print(f"SPEAS Before: {score_before:.6f}")
+    print(f"SPEAS After:  {score_after:.6f}")
+    print(
+        f"SPEAS Improvement: {improvement:+.6f} ({improvement_pct:+.2f}%)"
+    )
+
+    return {
+        "score_before": score_before,
+        "score_after": score_after,
+        "improvement": improvement,
+        "improvement_pct": improvement_pct,
+    }
+
+
 def compare_eas(
     uv_before: np.ndarray,
     depth_before: np.ndarray,

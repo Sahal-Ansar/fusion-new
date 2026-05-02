@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import sys
@@ -17,6 +18,7 @@ from metrics import (
     accumulate_eas_results,
     compare_dgc,
     compare_eas,
+    compare_speas,
     compare_stereo_consistency,
 )
 from imu_baseline import (
@@ -29,12 +31,39 @@ from imu_baseline import (
 
 PROJECT_ROOT = r"C:\Users\sahaa\OneDrive\Desktop\Honors\fusion-revised1"
 DEBUG_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "validation_outputs")
-TEST_LOG_DIR = os.path.join(PROJECT_ROOT, "test_logs")
+TEST_LOG_DIR = os.path.join(PROJECT_ROOT, "test_logs1")
+BASE_DIR = r"C:\Users\sahaa\OneDrive\Desktop\Honors\datasets\fusion"
 DATASETS = [
     r"C:\Users\sahaa\OneDrive\Desktop\Honors\datasets\fusion\2011_09_26_drive_0009_sync",
     r"C:\Users\sahaa\OneDrive\Desktop\Honors\datasets\fusion\2011_09_26_drive_0005_sync",
     r"C:\Users\sahaa\OneDrive\Desktop\Honors\datasets\fusion\2011_09_26_drive_0013_sync",
     r"C:\Users\sahaa\OneDrive\Desktop\Honors\datasets\fusion\2011_09_26_drive_0017_sync",
+]
+SEQUENCES = [
+    "2011_09_26_drive_0001_sync",
+    "2011_09_26_drive_0002_sync",
+    "2011_09_26_drive_0005_sync",
+    "2011_09_26_drive_0009_sync",
+    "2011_09_26_drive_0011_sync",
+    "2011_09_26_drive_0013_sync",
+    "2011_09_26_drive_0014_sync",
+    "2011_09_26_drive_0017_sync",
+    "2011_09_26_drive_0018_sync",
+    "2011_09_26_drive_0048_sync",
+    "2011_09_26_drive_0051_sync",
+    "2011_09_26_drive_0056_sync",
+    "2011_09_26_drive_0057_sync",
+    "2011_09_26_drive_0059_sync",
+    "2011_09_26_drive_0060_sync",
+    "2011_09_26_drive_0084_sync",
+    "2011_09_26_drive_0091_sync",
+    "2011_09_26_drive_0093_sync",
+    "2011_09_26_drive_0095_sync",
+    "2011_09_26_drive_0096_sync",
+    "2011_09_26_drive_0104_sync",
+    "2011_09_26_drive_0106_sync",
+    "2011_09_26_drive_0113_sync",
+    "2011_09_26_drive_0117_sync",
 ]
 DATASET_PATH = DATASETS[0]
 
@@ -102,14 +131,17 @@ class TeeStream:
             stream.flush()
 
 
-def _list_first_n_pairs(count):
+def _list_first_n_pairs(count=None):
     image_dir = os.path.join(DATASET_PATH, "image_02", "data")
     lidar_dir = os.path.join(DATASET_PATH, "velodyne_points", "data")
     image_files = sorted([f for f in os.listdir(image_dir) if f.endswith(".png")])
     lidar_files = sorted([f for f in os.listdir(lidar_dir) if f.endswith(".bin")])
     if not lidar_files:
         lidar_files = sorted([f for f in os.listdir(lidar_dir) if f.endswith(".txt")])
-    if len(image_files) < count or len(lidar_files) < count:
+    n_available = min(len(image_files), len(lidar_files))
+    if count is None:
+        count = n_available
+    if n_available < count:
         raise RuntimeError("Insufficient frames for validation")
     return [(image_files[i], lidar_files[i]) for i in range(count)]
 
@@ -833,7 +865,7 @@ def temporal_statistics_test(
 
 
 def _evaluate_mode_metrics(traced_frames, temporal_frames, tr_velo_to_cam, r_rect, p_rect, use_smoothing):
-    edge_frames = traced_frames[:5]
+    edge_frames = traced_frames
     motion_pairs = _build_motion_frame_pairs(edge_frames, use_smoothing=use_smoothing)
 
     original_edge_medians = []
@@ -1249,13 +1281,13 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
     tr_velo_to_cam = parse_calib_velo_to_cam(os.path.join(DATASET_PATH, "calib_velo_to_cam.txt"))
     r_rect, p_rect = parse_calib_cam_to_cam(os.path.join(DATASET_PATH, "calib_cam_to_cam.txt"), camera_id="02")
 
-    frame_pairs = _list_first_n_pairs(EDGE_VALIDATION_FRAMES)
+    frame_pairs = _list_first_n_pairs()
     traced_frames = [
         _project_with_full_trace(image_name, lidar_name, tr_velo_to_cam, r_rect, p_rect)
         for image_name, lidar_name in frame_pairs
     ]
 
-    temporal_frame_pairs = _list_first_n_pairs(TEMPORAL_VALIDATION_FRAMES)
+    temporal_frame_pairs = _list_first_n_pairs()
     temporal_traced_frames = [
         _project_with_full_trace(image_name, lidar_name, tr_velo_to_cam, r_rect, p_rect)
         for image_name, lidar_name in temporal_frame_pairs
@@ -1358,6 +1390,7 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
     )
 
     eas_results_full = []
+    speas_results_full = []
     stereo_results_full = []
     dgc_results_full = []
     imu_results_full = []
@@ -1376,6 +1409,22 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
         )
         eas_results_full.append(eas_result)
 
+        try:
+            speas_result = compare_speas(
+                uv_before=motion_pair.original_t.uv,
+                depth_before=motion_pair.original_t.depth,
+                uv_after=motion_pair.corrected_uv,
+                depth_after=motion_pair.corrected_depth,
+                image_bgr=motion_pair.original_t1.image,
+            )
+        except Exception as exc:
+            print(
+                f"[SPEAS] Warning: compare_speas failed on pair "
+                f"{frame_t_name}->{frame_t1_name}: {exc}"
+            )
+            speas_result = None
+        speas_results_full.append(speas_result)
+
         entry = {
             "frame_t": frame_t_name,
             "frame_t1": frame_t1_name,
@@ -1385,6 +1434,10 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
             "eas_improvement_pct": _json_finite_or_none(
                 eas_result["improvement_pct"]
             ),
+            "speas_before": None,
+            "speas_after": None,
+            "speas_improvement": None,
+            "speas_improvement_pct": None,
             "stereo_before": None,
             "stereo_after": None,
             "stereo_improvement": None,
@@ -1401,6 +1454,14 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
             "imu_event_guided_eas": None,
             "imu_event_guided_improvement_pct": None,
         }
+
+        if speas_result is not None:
+            entry["speas_before"] = float(speas_result["score_before"])
+            entry["speas_after"] = float(speas_result["score_after"])
+            entry["speas_improvement"] = float(speas_result["improvement"])
+            entry["speas_improvement_pct"] = _json_finite_or_none(
+                speas_result["improvement_pct"]
+            )
 
         if p_rect_right is not None:
             right_image_path = os.path.join(
@@ -1539,6 +1600,61 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
         per_frame_for_json.append(entry)
 
     eas_summary = accumulate_eas_results(eas_results_full)
+
+    speas_results_valid = [r for r in speas_results_full if r is not None]
+    if speas_results_valid:
+        _sb = np.array(
+            [r["score_before"] for r in speas_results_valid], dtype=np.float64
+        )
+        _sa = np.array(
+            [r["score_after"] for r in speas_results_valid], dtype=np.float64
+        )
+        _ip = np.array(
+            [r["improvement_pct"] for r in speas_results_valid],
+            dtype=np.float64,
+        )
+        speas_summary = {
+            "n_frames": int(len(speas_results_valid)),
+            "score_before_mean": float(np.mean(_sb)),
+            "score_before_std": float(np.std(_sb)),
+            "score_after_mean": float(np.mean(_sa)),
+            "score_after_std": float(np.std(_sa)),
+            "improvement_pct_mean": float(np.mean(_ip)),
+            "improvement_pct_std": float(np.std(_ip)),
+        }
+    else:
+        speas_summary = {
+            "n_frames": 0,
+            "score_before_mean": float("nan"),
+            "score_before_std": float("nan"),
+            "score_after_mean": float("nan"),
+            "score_after_std": float("nan"),
+            "improvement_pct_mean": float("nan"),
+            "improvement_pct_std": float("nan"),
+        }
+
+    print("=" * 56)
+    print("SPEAS SUMMARY")
+    print("-" * 56)
+    print(f"Frames                : {speas_summary['n_frames']}")
+    print(
+        "Score Before          : "
+        f"{speas_summary['score_before_mean']:.6f} "
+        f"+/- {speas_summary['score_before_std']:.6f}"
+    )
+    print(
+        "Score After           : "
+        f"{speas_summary['score_after_mean']:.6f} "
+        f"+/- {speas_summary['score_after_std']:.6f}"
+    )
+    print(
+        "Improvement (%)       : "
+        f"{speas_summary['improvement_pct_mean']:+.2f} "
+        f"+/- {speas_summary['improvement_pct_std']:.2f} "
+        f"(n={speas_summary['n_frames']})"
+    )
+    print("=" * 56)
+
     stereo_summary = _summarize_stereo_results(stereo_results_full)
     dgc_summary = _summarize_dgc_results(dgc_results_full)
     imu_summary = _summarize_imu_results(imu_results_full)
@@ -1608,6 +1724,7 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
         )
 
     eas_summary_json = _json_safe_summary(eas_summary)
+    speas_summary_json = _json_safe_summary(speas_summary)
     stereo_summary_json = _json_safe_summary(stereo_summary)
     dgc_summary_json = _json_safe_summary(dgc_summary)
     imu_summary_json = _json_safe_summary(imu_summary)
@@ -1621,6 +1738,7 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
                     "dataset_path": dataset_path,
                     "per_frame": per_frame_for_json,
                     "eas_summary": eas_summary_json,
+                    "speas_summary": speas_summary_json,
                     "stereo_summary": stereo_summary_json,
                     "dgc_summary": dgc_summary_json,
                     "imu_summary": imu_summary_json,
@@ -1671,6 +1789,12 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
             "after_mean": eas_summary["score_after_mean"],
             "improvement_pct_mean": eas_summary["improvement_pct_mean"],
             "n_frames": eas_summary["n_frames"],
+        },
+        "speas_score": {
+            "before_mean": speas_summary["score_before_mean"],
+            "after_mean": speas_summary["score_after_mean"],
+            "improvement_pct_mean": speas_summary["improvement_pct_mean"],
+            "n_frames": speas_summary["n_frames"],
         },
         "stereo_consistency": {
             "before_mean": stereo_summary["score_before_mean"],
@@ -1753,7 +1877,10 @@ def _mean_of(values):
     return float(np.mean(values)) if values else float("nan")
 
 
-def run_all_datasets():
+def run_all_datasets(dataset_paths=None):
+    if dataset_paths is None:
+        dataset_paths = DATASETS
+
     no_smoothing_original_errors = []
     no_smoothing_corrected_errors = []
     no_smoothing_improvements = []
@@ -1762,7 +1889,7 @@ def run_all_datasets():
     smoothing_improvements = []
     dataset_results = []
 
-    for dataset_path in DATASETS:
+    for dataset_path in dataset_paths:
         result = run_validation_on_dataset(dataset_path)
         dataset_results.append(result)
         _print_dataset_results(result)
@@ -1860,6 +1987,9 @@ def run_all_datasets():
     eas_before_vals = []
     eas_after_vals = []
     eas_impr_vals = []
+    speas_before_vals = []
+    speas_after_vals = []
+    speas_impr_vals = []
     stereo_before_vals = []
     stereo_after_vals = []
     stereo_impr_vals = []
@@ -1873,6 +2003,14 @@ def run_all_datasets():
             eas_after_vals.append(float(eas["after_mean"]))
         if _is_finite_float(eas.get("improvement_pct_mean")):
             eas_impr_vals.append(float(eas["improvement_pct_mean"]))
+
+        speas = r.get("speas_score") or {}
+        if _is_finite_float(speas.get("before_mean")):
+            speas_before_vals.append(float(speas["before_mean"]))
+        if _is_finite_float(speas.get("after_mean")):
+            speas_after_vals.append(float(speas["after_mean"]))
+        if _is_finite_float(speas.get("improvement_pct_mean")):
+            speas_impr_vals.append(float(speas["improvement_pct_mean"]))
 
         stereo = r.get("stereo_consistency") or {}
         if stereo.get("available", False):
@@ -1892,6 +2030,11 @@ def run_all_datasets():
     print(f"  Before mean : {_fmt_mean_std_score(eas_before_vals)}")
     print(f"  After mean  : {_fmt_mean_std_score(eas_after_vals)}")
     print(f"  Improvement : {_fmt_mean_std_pct(eas_impr_vals)}")
+    print("")
+    print("SPEAS (Sparse-Point Edge Alignment Score):")
+    print(f"  Before mean : {_fmt_mean_std_score(speas_before_vals)}")
+    print(f"  After mean  : {_fmt_mean_std_score(speas_after_vals)}")
+    print(f"  Improvement : {_fmt_mean_std_pct(speas_impr_vals)}")
     print("")
     print("Stereo Consistency:")
     print(
@@ -1957,6 +2100,30 @@ def run_all_datasets():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--sequences",
+        type=str,
+        default=None,
+        help=(
+            'Comma-separated sequence names to run, or "all" for all 24 '
+            'sequences in BASE_DIR. If omitted, runs the default 4-dataset '
+            'list. Example: --sequences 0009_sync,0017_sync'
+        ),
+    )
+    args = parser.parse_args()
+
+    if args.sequences is None:
+        selected_paths = DATASETS
+    elif args.sequences == "all":
+        selected_paths = [os.path.join(BASE_DIR, seq) for seq in SEQUENCES]
+    else:
+        tokens = [t.strip() for t in args.sequences.split(",") if t.strip()]
+        selected_paths = [
+            os.path.join(BASE_DIR, seq) for seq in SEQUENCES
+            if any(tok in seq for tok in tokens)
+        ]
+
     os.makedirs(TEST_LOG_DIR, exist_ok=True)
     run_timestamp = datetime.now()
     log_filename = f"validation_{run_timestamp.strftime('%Y-%m-%d_%H-%M-%S')}.txt"
@@ -1969,7 +2136,7 @@ if __name__ == "__main__":
     with open(log_path, "w", encoding="utf-8") as log_file:
         sys.stdout = TeeStream(original_stdout, log_file)
         try:
-            run_all_datasets()
+            run_all_datasets(selected_paths)
         finally:
             sys.stdout.flush()
             sys.stdout = original_stdout
