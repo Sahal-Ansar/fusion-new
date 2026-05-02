@@ -14,7 +14,16 @@
       "stereo_improvement": 0.0013654530048370361,
       "stereo_improvement_pct": 0.483747929920586,
       "stereo_n_valid_before": 16527,
-      "stereo_n_valid_after": 16525
+      "stereo_n_valid_after": 16525,
+      "dgc_before": 0.027274904772639275,
+      "dgc_after": 0.03520240634679794,
+      "dgc_improvement": 0.007927501574158669,
+      "dgc_improvement_pct": 0.8149786217148769,
+      "dgc_valid": true,
+      "imu_eas": 0.015214111655950546,
+      "imu_improvement_pct": -0.8126596247985411,
+      "imu_event_guided_eas": 0.01405150257050991,
+      "imu_event_guided_improvement_pct": -8.392208512610178
     },
     {
       "frame_t": "0000000001",
@@ -28,7 +37,16 @@
       "stereo_improvement": -0.0005998611450195312,
       "stereo_improvement_pct": -0.20224458532525025,
       "stereo_n_valid_before": 16244,
-      "stereo_n_valid_after": 16233
+      "stereo_n_valid_after": 16233,
+      "dgc_before": 0.033122118562459946,
+      "dgc_after": 0.024700837209820747,
+      "dgc_improvement": -0.008421281352639198,
+      "dgc_improvement_pct": -0.8709767297725912,
+      "dgc_valid": true,
+      "imu_eas": 0.0152879124507308,
+      "imu_improvement_pct": -3.2072113358257486,
+      "imu_event_guided_eas": 0.015632111579179764,
+      "imu_event_guided_improvement_pct": -1.0279737449693935
     },
     {
       "frame_t": "0000000002",
@@ -42,7 +60,16 @@
       "stereo_improvement": 0.004295289516448975,
       "stereo_improvement_pct": 1.5138578081171628,
       "stereo_n_valid_before": 16498,
-      "stereo_n_valid_after": 16495
+      "stereo_n_valid_after": 16495,
+      "dgc_before": 0.02979952283203602,
+      "dgc_after": 0.02621443197131157,
+      "dgc_improvement": -0.003585090860724449,
+      "dgc_improvement_pct": -0.3695206243548144,
+      "dgc_valid": true,
+      "imu_eas": 0.01563122868537903,
+      "imu_improvement_pct": -6.770342667609929,
+      "imu_event_guided_eas": 0.016506973654031754,
+      "imu_event_guided_improvement_pct": -1.5471190182478767
     },
     {
       "frame_t": "0000000003",
@@ -56,7 +83,16 @@
       "stereo_improvement": 0.0011607110500335693,
       "stereo_improvement_pct": 0.44111629253461615,
       "stereo_n_valid_before": 17231,
-      "stereo_n_valid_after": 17231
+      "stereo_n_valid_after": 17231,
+      "dgc_before": 0.01776929572224617,
+      "dgc_after": 0.017332473769783974,
+      "dgc_improvement": -0.00043682195246219635,
+      "dgc_improvement_pct": -0.04447243916930868,
+      "dgc_valid": true,
+      "imu_eas": 0.015096563845872879,
+      "imu_improvement_pct": -0.21222845914997684,
+      "imu_event_guided_eas": 0.0155692333355546,
+      "imu_event_guided_improvement_pct": 2.91210072808982
     },
     {
       "frame_t": "0000000004",
@@ -70,7 +106,16 @@
       "stereo_improvement": 0.005352959036827087,
       "stereo_improvement_pct": 2.1947866340719284,
       "stereo_n_valid_before": 17934,
-      "stereo_n_valid_after": 17934
+      "stereo_n_valid_after": 17934,
+      "dgc_before": 0.026447748765349388,
+      "dgc_after": 0.025541918352246284,
+      "dgc_improvement": -0.0009058304131031036,
+      "dgc_improvement_pct": -0.09304384145322835,
+      "dgc_valid": true,
+      "imu_eas": 0.01391796488314867,
+      "imu_improvement_pct": 0.16689006704156104,
+      "imu_event_guided_eas": 0.013470718637108803,
+      "imu_event_guided_improvement_pct": -3.051918568854167
     }
   ],
   "eas_summary": {
@@ -94,5 +139,21 @@
     "improvement_pct_std": 0.8545328641662362,
     "n_valid_before_mean": 16886.8,
     "n_valid_after_mean": 16883.6
+  },
+  "dgc_summary": {
+    "before_mean": 0.02688271813094616,
+    "after_mean": 0.025798413529992105,
+    "improvement_mean": -0.0010843046009540557,
+    "improvement_pct_mean": -0.11260700260701315,
+    "n_frames": 5,
+    "n_pct_frames": 5
+  },
+  "imu_summary": {
+    "original_eas_mean": 0.015384610928595065,
+    "imu_eas_mean": 0.015029556304216384,
+    "event_guided_eas_mean": 0.015046107955276966,
+    "imu_improvement_pct_mean": -2.167110404068527,
+    "event_guided_improvement_pct_mean": -2.2214238233183594,
+    "n_frames": 5
   }
 }

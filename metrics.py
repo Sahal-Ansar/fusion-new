@@ -642,3 +642,288 @@ def compare_stereo_consistency(
         "n_valid_before": n_valid_before,
         "n_valid_after": n_valid_after,
     }
+
+
+# =====================================================================
+#                  DEPTH GRADIENT CORRELATION (DGC)
+# ---------------------------------------------------------------------
+# A third flow-independent metric. Densifies the projected LiDAR depth
+# into a dense image, computes gradient orientations on both the depth
+# image and the RGB image, and measures their circular correlation
+# (mean cosine of orientation difference) over pixels with strong
+# gradients on both modalities. Higher = LiDAR depth edges share
+# orientation with RGB intensity edges, independent of optical flow.
+# =====================================================================
+
+
+def compute_dense_depth_image(
+    uv: np.ndarray,
+    depth: np.ndarray,
+    image_shape: Tuple[int, ...],
+    fill_radius: int = 3,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Rasterize projected LiDAR points to a dense depth image.
+
+    For each pixel that received one or more LiDAR projections, the
+    smallest (nearest) depth is retained. The float32 depth image is
+    then dilated with a square structuring element of side
+    ``2 * fill_radius + 1`` to bridge small holes in the sparse
+    coverage; ``valid_mask`` is recomputed from the dilated image.
+
+    Args:
+        uv: (N, 2) float32 projected pixel coordinates (u, v).
+        depth: (N,) float32 camera-frame Z depths in metres,
+            row-aligned with ``uv``. Non-finite or non-positive depths
+            are dropped.
+        image_shape: shape tuple of the target image; only the first
+            two entries (H, W) are used.
+        fill_radius: half-side of the square dilation kernel in pixels
+            (must be >= 0). 0 disables dilation.
+
+    Returns:
+        depth_image: (H, W) float32 — depth in metres, 0.0 where no
+            LiDAR coverage even after dilation.
+        valid_mask:  (H, W) bool  — True where ``depth_image > 0``.
+    """
+    assert uv.ndim == 2 and uv.shape[1] == 2, (
+        f"uv must be (N, 2), got {uv.shape}"
+    )
+    assert depth.ndim == 1 and depth.shape[0] == uv.shape[0], (
+        f"depth must be (N,) matching uv; "
+        f"got depth {depth.shape}, uv {uv.shape}"
+    )
+    assert len(image_shape) >= 2, (
+        f"image_shape must have at least 2 dims, got {image_shape}"
+    )
+    assert int(fill_radius) >= 0, (
+        f"fill_radius must be >= 0, got {fill_radius}"
+    )
+
+    h, w = int(image_shape[0]), int(image_shape[1])
+    depth_image = np.zeros((h, w), dtype=np.float32)
+
+    if uv.shape[0] == 0:
+        return depth_image, np.zeros((h, w), dtype=bool)
+
+    u = np.asarray(uv[:, 0], dtype=np.float64)
+    v = np.asarray(uv[:, 1], dtype=np.float64)
+    d = np.asarray(depth, dtype=np.float64)
+
+    finite = (
+        np.isfinite(u) & np.isfinite(v) & np.isfinite(d) & (d > 0.0)
+    )
+    u = u[finite]
+    v = v[finite]
+    d = d[finite]
+    if u.size == 0:
+        return depth_image, np.zeros((h, w), dtype=bool)
+
+    u_idx = np.clip(np.rint(u).astype(np.int64), 0, w - 1)
+    v_idx = np.clip(np.rint(v).astype(np.int64), 0, h - 1)
+
+    # Sort by depth descending so the LAST write at each pixel is the
+    # smallest (nearest) depth — i.e. min-on-collision without a loop.
+    order = np.argsort(-d, kind="stable")
+    flat_idx = v_idx[order] * w + u_idx[order]
+    depth_image.reshape(-1)[flat_idx] = d[order].astype(np.float32)
+
+    fr = int(fill_radius)
+    if fr > 0:
+        ksize = 2 * fr + 1
+        kernel = np.ones((ksize, ksize), dtype=np.uint8)
+        depth_image = cv2.dilate(depth_image, kernel, iterations=1)
+
+    valid_mask = depth_image > 0.0
+    return depth_image.astype(np.float32), valid_mask
+
+
+def compute_gradient_orientation(
+    image: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Compute per-pixel gradient orientation and magnitude via Sobel.
+
+    Args:
+        image: (H, W) array, float32 or uint8. Non-2D inputs raise
+            AssertionError.
+
+    Returns:
+        orientation: (H, W) float32, orientation angle in radians on
+            [-pi, pi]. NaN/inf cells are replaced with 0.0.
+        magnitude:   (H, W) float32, gradient magnitude. NaN/inf cells
+            are replaced with 0.0.
+    """
+    assert image.ndim == 2, f"image must be 2D, got shape {image.shape}"
+
+    img32 = image.astype(np.float32) if image.dtype != np.float32 else image
+    gx = cv2.Sobel(img32, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(img32, cv2.CV_32F, 0, 1, ksize=3)
+
+    orientation = np.arctan2(gy, gx).astype(np.float32)
+    magnitude = np.sqrt(gx * gx + gy * gy).astype(np.float32)
+
+    orientation = np.where(
+        np.isfinite(orientation), orientation, 0.0
+    ).astype(np.float32)
+    magnitude = np.where(
+        np.isfinite(magnitude), magnitude, 0.0
+    ).astype(np.float32)
+    return orientation, magnitude
+
+
+def depth_gradient_correlation(
+    uv: np.ndarray,
+    depth: np.ndarray,
+    image_bgr: np.ndarray,
+    min_depth_mag: float = 0.5,
+    min_rgb_mag: float = 5.0,
+):
+    """Circular correlation of LiDAR-depth and RGB gradient orientations.
+
+    Densifies the projected LiDAR depth, takes Sobel gradients on both
+    the depth image and the RGB grayscale image, restricts to pixels
+    where both modalities show meaningful gradient magnitude, and
+    returns the mean cosine of the orientation difference.
+    Interpretation:
+
+        +1.0  perfect alignment (parallel gradients)
+         0.0  random / decorrelated
+        -1.0  anti-aligned
+
+    Args:
+        uv: (N, 2) projected pixel coordinates.
+        depth: (N,) camera-Z depths in metres, row-aligned.
+        image_bgr: (H, W, 3) uint8 BGR image.
+        min_depth_mag: minimum depth-gradient magnitude (m / px) to
+            include a pixel in the evaluation mask.
+        min_rgb_mag: minimum RGB-gradient magnitude (intensity / px)
+            to include a pixel in the evaluation mask.
+
+    Returns:
+        correlation: float in [-1, 1], or None if fewer than 100
+            evaluation pixels were found.
+        n_pixels: int — number of pixels in the evaluation mask.
+        eval_mask: (H, W) bool, or None if correlation is None.
+    """
+    assert image_bgr.ndim == 3 and image_bgr.shape[2] == 3, (
+        f"image_bgr must be (H, W, 3), got {image_bgr.shape}"
+    )
+
+    depth_image, valid_mask = compute_dense_depth_image(
+        uv, depth, image_bgr.shape
+    )
+    depth_orient, depth_mag = compute_gradient_orientation(depth_image)
+
+    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    rgb_orient, rgb_mag = compute_gradient_orientation(gray)
+
+    eval_mask = (
+        valid_mask
+        & (depth_mag > float(min_depth_mag))
+        & (rgb_mag > float(min_rgb_mag))
+    )
+    n_pixels = int(np.sum(eval_mask))
+
+    if n_pixels < 100:
+        print(
+            f"[DGC] Warning: only {n_pixels} evaluation pixels "
+            "(< 100); returning None."
+        )
+        return None, n_pixels, None
+
+    delta = depth_orient[eval_mask] - rgb_orient[eval_mask]
+    delta = (delta + np.pi) % (2.0 * np.pi) - np.pi
+    correlation = float(np.mean(np.cos(delta)))
+
+    print(f"DGC: {correlation:.6f} ({n_pixels} evaluation pixels)")
+    return correlation, n_pixels, eval_mask
+
+
+def compare_dgc(
+    uv_before: np.ndarray,
+    depth_before: np.ndarray,
+    uv_after: np.ndarray,
+    depth_after: np.ndarray,
+    image_bgr: np.ndarray,
+) -> Dict[str, object]:
+    """Compare depth gradient correlation before and after correction.
+
+    The improvement percentage is reported relative to the gap from
+    perfect alignment (1.0):
+
+        improvement_pct = (gap_before - gap_after) / gap_before * 100
+        gap_before = 1.0 - corr_before
+        gap_after  = 1.0 - corr_after
+
+    so a positive value means the corrected projection closed the
+    distance to perfect orientation alignment. ``improvement_pct``
+    is set to None when ``gap_before == 0`` (already perfect) or
+    when either correlation is None (insufficient pixels). The
+    function never raises — any exception is caught and the
+    invalid-result dict is returned.
+
+    Returns:
+        Dict with keys ``corr_before``, ``corr_after``, ``improvement``,
+        ``improvement_pct``, ``n_pixels_before``, ``n_pixels_after``,
+        ``valid``. When ``valid`` is False all numeric fields are None.
+    """
+    invalid = {
+        "corr_before": None,
+        "corr_after": None,
+        "improvement": None,
+        "improvement_pct": None,
+        "n_pixels_before": None,
+        "n_pixels_after": None,
+        "valid": False,
+    }
+    try:
+        corr_before, n_before, _ = depth_gradient_correlation(
+            uv_before, depth_before, image_bgr
+        )
+        corr_after, n_after, _ = depth_gradient_correlation(
+            uv_after, depth_after, image_bgr
+        )
+
+        if corr_before is None or corr_after is None:
+            print(
+                "[DGC] Warning: insufficient evaluation pixels — "
+                "comparison invalid."
+            )
+            return invalid
+
+        improvement = corr_after - corr_before
+        gap_before = 1.0 - corr_before
+        gap_after = 1.0 - corr_after
+        if gap_before > 0.0:
+            improvement_pct = (gap_before - gap_after) / gap_before * 100.0
+        else:
+            improvement_pct = float("nan")
+
+        print(f"DGC Before: {corr_before:.6f}")
+        print(f"DGC After:  {corr_after:.6f}")
+        if np.isfinite(improvement_pct):
+            print(
+                f"DGC Improvement: {improvement:+.6f} "
+                f"({improvement_pct:+.2f}%)"
+            )
+        else:
+            print(
+                f"DGC Improvement: {improvement:+.6f} "
+                "(improvement_pct undefined: gap_before == 0)"
+            )
+
+        return {
+            "corr_before": float(corr_before),
+            "corr_after": float(corr_after),
+            "improvement": float(improvement),
+            "improvement_pct": (
+                float(improvement_pct)
+                if np.isfinite(improvement_pct)
+                else None
+            ),
+            "n_pixels_before": int(n_before),
+            "n_pixels_after": int(n_after),
+            "valid": True,
+        }
+    except Exception as exc:
+        print(f"[DGC] Warning: compare_dgc failed: {exc}")
+        return invalid

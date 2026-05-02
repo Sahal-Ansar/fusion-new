@@ -15,8 +15,15 @@ from loader import load_image, load_lidar
 from main import process_frame
 from metrics import (
     accumulate_eas_results,
+    compare_dgc,
     compare_eas,
     compare_stereo_consistency,
+)
+from imu_baseline import (
+    compare_imu_correction,
+    has_oxts,
+    imu_deskew_projection,
+    load_oxts,
 )
 
 
@@ -1047,6 +1054,173 @@ def _summarize_stereo_results(results_list):
     return summary
 
 
+def _summarize_dgc_results(dgc_results):
+    """Aggregate per-pair compare_dgc dicts into mean stats over valid frames.
+
+    Only entries with ``valid == True`` contribute. ``improvement_pct``
+    contributions are additionally filtered to finite floats (since a
+    valid frame can still have ``improvement_pct == None`` when
+    ``gap_before == 0``).
+
+    Args:
+        dgc_results: list of dicts produced by ``metrics.compare_dgc``.
+
+    Returns:
+        Dict with keys ``before_mean``, ``after_mean``,
+        ``improvement_mean``, ``improvement_pct_mean``, ``n_frames``,
+        ``n_pct_frames``. All numeric fields are None when
+        ``n_frames == 0``.
+    """
+    valid_entries = [r for r in dgc_results if r and r.get("valid")]
+    n_frames = len(valid_entries)
+    if n_frames == 0:
+        print("[DGC] No valid frames to aggregate.")
+        return {
+            "before_mean": None,
+            "after_mean": None,
+            "improvement_mean": None,
+            "improvement_pct_mean": None,
+            "n_frames": 0,
+            "n_pct_frames": 0,
+        }
+
+    before = np.array(
+        [float(r["corr_before"]) for r in valid_entries], dtype=np.float64
+    )
+    after = np.array(
+        [float(r["corr_after"]) for r in valid_entries], dtype=np.float64
+    )
+    improvement = np.array(
+        [float(r["improvement"]) for r in valid_entries], dtype=np.float64
+    )
+    pct_vals = [
+        float(r["improvement_pct"]) for r in valid_entries
+        if r.get("improvement_pct") is not None
+        and np.isfinite(r["improvement_pct"])
+    ]
+
+    summary = {
+        "before_mean": float(np.mean(before)),
+        "after_mean": float(np.mean(after)),
+        "improvement_mean": float(np.mean(improvement)),
+        "improvement_pct_mean": (
+            float(np.mean(pct_vals)) if pct_vals else None
+        ),
+        "n_frames": int(n_frames),
+        "n_pct_frames": int(len(pct_vals)),
+    }
+
+    print("=" * 56)
+    print("DGC SUMMARY (Depth Gradient Correlation)")
+    print("-" * 56)
+    print(f"Frames                : {summary['n_frames']}")
+    print(f"Correlation Before    : {summary['before_mean']:+.6f}")
+    print(f"Correlation After     : {summary['after_mean']:+.6f}")
+    print(f"Improvement (corr.)   : {summary['improvement_mean']:+.6f}")
+    if summary["improvement_pct_mean"] is not None:
+        print(
+            "Improvement (%)       : "
+            f"{summary['improvement_pct_mean']:+.2f} "
+            f"(n={summary['n_pct_frames']})"
+        )
+    else:
+        print("Improvement (%)       : n/a")
+    print("=" * 56)
+    return summary
+
+
+def _summarize_imu_results(imu_eas_list):
+    """Aggregate per-pair compare_imu_correction dicts into mean stats.
+
+    Frames where the IMU baseline could not run (entry is None) or
+    where any of the EAS scores is None are excluded.
+
+    Args:
+        imu_eas_list: list with entries either None or dicts produced
+            by ``imu_baseline.compare_imu_correction``.
+
+    Returns:
+        Dict with keys ``imu_eas_mean``, ``event_guided_eas_mean``,
+        ``imu_improvement_pct_mean``, ``event_guided_improvement_pct_mean``,
+        ``n_frames``. All numeric fields are None when ``n_frames == 0``.
+    """
+    usable = [
+        r for r in imu_eas_list
+        if r is not None
+        and r.get("original_eas") is not None
+        and r.get("imu_eas") is not None
+        and r.get("event_guided_eas") is not None
+    ]
+    n_frames = len(usable)
+    if n_frames == 0:
+        print("[IMU] No usable frames to aggregate.")
+        return {
+            "original_eas_mean": None,
+            "imu_eas_mean": None,
+            "event_guided_eas_mean": None,
+            "imu_improvement_pct_mean": None,
+            "event_guided_improvement_pct_mean": None,
+            "n_frames": 0,
+        }
+
+    original = np.array(
+        [float(r["original_eas"]) for r in usable], dtype=np.float64
+    )
+    imu = np.array(
+        [float(r["imu_eas"]) for r in usable], dtype=np.float64
+    )
+    event = np.array(
+        [float(r["event_guided_eas"]) for r in usable], dtype=np.float64
+    )
+    imu_pct_vals = [
+        float(r["imu_improvement_pct"]) for r in usable
+        if r.get("imu_improvement_pct") is not None
+        and np.isfinite(r["imu_improvement_pct"])
+    ]
+    event_pct_vals = [
+        float(r["event_guided_improvement_pct"]) for r in usable
+        if r.get("event_guided_improvement_pct") is not None
+        and np.isfinite(r["event_guided_improvement_pct"])
+    ]
+
+    summary = {
+        "original_eas_mean": float(np.mean(original)),
+        "imu_eas_mean": float(np.mean(imu)),
+        "event_guided_eas_mean": float(np.mean(event)),
+        "imu_improvement_pct_mean": (
+            float(np.mean(imu_pct_vals)) if imu_pct_vals else None
+        ),
+        "event_guided_improvement_pct_mean": (
+            float(np.mean(event_pct_vals)) if event_pct_vals else None
+        ),
+        "n_frames": int(n_frames),
+    }
+
+    print("=" * 56)
+    print("IMU BASELINE SUMMARY")
+    print("-" * 56)
+    print(f"Frames                : {summary['n_frames']}")
+    print(f"Original EAS mean     : {summary['original_eas_mean']:.6f}")
+    print(f"IMU Baseline EAS mean : {summary['imu_eas_mean']:.6f}")
+    print(f"Event-Guided EAS mean : {summary['event_guided_eas_mean']:.6f}")
+    if summary["imu_improvement_pct_mean"] is not None:
+        print(
+            "IMU Improvement (%)   : "
+            f"{summary['imu_improvement_pct_mean']:+.2f}"
+        )
+    else:
+        print("IMU Improvement (%)   : n/a")
+    if summary["event_guided_improvement_pct_mean"] is not None:
+        print(
+            "Event-Guided Imp. (%) : "
+            f"{summary['event_guided_improvement_pct_mean']:+.2f}"
+        )
+    else:
+        print("Event-Guided Imp. (%) : n/a")
+    print("=" * 56)
+    return summary
+
+
 def _json_finite_or_none(value):
     """Return float(value) if finite, else None — for strict-JSON output."""
     try:
@@ -1067,7 +1241,7 @@ def _json_safe_summary(summary):
     return out
 
 
-def run_validation_on_dataset(dataset_path):
+def run_validation_on_dataset(dataset_path, skip_imu=False):
     global DATASET_PATH
 
     DATASET_PATH = dataset_path
@@ -1160,6 +1334,22 @@ def run_validation_on_dataset(dataset_path):
         else:
             p_rect_right = p_rect_right_candidate
 
+    # IMU baseline availability — requires oxts/data/*.txt next to
+    # image_02. The skip_imu kwarg lets callers disable the baseline
+    # explicitly without touching the dataset on disk.
+    oxts_dir = os.path.join(DATASET_PATH, "oxts", "data")
+    if skip_imu:
+        print("[IMU] Skipped per skip_imu flag.")
+        imu_available = False
+    elif has_oxts(DATASET_PATH):
+        print(f"[IMU] Available at {oxts_dir}")
+        imu_available = True
+    else:
+        print(
+            "[IMU] Warning: oxts data not found, skipping IMU baseline."
+        )
+        imu_available = False
+
     print("")
     print(f"=== Flow-independent metrics — {sequence_name} ===")
 
@@ -1169,6 +1359,8 @@ def run_validation_on_dataset(dataset_path):
 
     eas_results_full = []
     stereo_results_full = []
+    dgc_results_full = []
+    imu_results_full = []
     per_frame_for_json = []
     for motion_pair in eas_motion_pairs:
         frame_t_name = motion_pair.original_t.name
@@ -1199,6 +1391,15 @@ def run_validation_on_dataset(dataset_path):
             "stereo_improvement_pct": None,
             "stereo_n_valid_before": None,
             "stereo_n_valid_after": None,
+            "dgc_before": None,
+            "dgc_after": None,
+            "dgc_improvement": None,
+            "dgc_improvement_pct": None,
+            "dgc_valid": False,
+            "imu_eas": None,
+            "imu_improvement_pct": None,
+            "imu_event_guided_eas": None,
+            "imu_event_guided_improvement_pct": None,
         }
 
         if p_rect_right is not None:
@@ -1238,12 +1439,111 @@ def run_validation_on_dataset(dataset_path):
                     stereo_result["n_valid_after"]
                 )
 
+        # ---- DGC (Depth Gradient Correlation) — flow-independent ----
+        # Uses the source frame (image_t) for gradient comparison, per
+        # spec. compare_dgc never raises; an invalid result is recorded
+        # with valid=False.
+        dgc_result = compare_dgc(
+            uv_before=motion_pair.original_t.uv,
+            depth_before=motion_pair.original_t.depth,
+            uv_after=motion_pair.corrected_uv,
+            depth_after=motion_pair.corrected_depth,
+            image_bgr=motion_pair.original_t.image,
+        )
+        dgc_results_full.append(dgc_result)
+        if dgc_result.get("valid"):
+            entry["dgc_before"] = _json_finite_or_none(
+                dgc_result["corr_before"]
+            )
+            entry["dgc_after"] = _json_finite_or_none(
+                dgc_result["corr_after"]
+            )
+            entry["dgc_improvement"] = _json_finite_or_none(
+                dgc_result["improvement"]
+            )
+            entry["dgc_improvement_pct"] = _json_finite_or_none(
+                dgc_result["improvement_pct"]
+            )
+            entry["dgc_valid"] = True
+
+        # ---- IMU baseline EAS comparison ----
+        # Recompute the event-guided uv at full input length (the raw
+        # output of move_lidar_points_weighted) so all three uv arrays
+        # share a single depth/length, matching compare_imu_correction's
+        # signature (single ``depth`` argument).
+        if imu_available:
+            try:
+                frame_t = motion_pair.original_t
+                lidar_aligned = (
+                    frame_t.lidar_xyz[frame_t.valid_mask_input]
+                    [frame_t.in_frame_mask_cam]
+                )
+                frame_idx_t = int(frame_t_name)
+                frame_idx_t1 = int(frame_t1_name)
+                oxts_t = load_oxts(oxts_dir, frame_idx_t)
+                oxts_t1 = load_oxts(oxts_dir, frame_idx_t1)
+
+                uv_imu = imu_deskew_projection(
+                    uv=frame_t.uv,
+                    depth=frame_t.depth,
+                    lidar_xyz=lidar_aligned,
+                    oxts_t=oxts_t,
+                    oxts_t1=oxts_t1,
+                    p_rect=p_rect,
+                    image_shape=frame_t.image.shape,
+                )
+
+                # Event-guided projection at full input length, sharing
+                # the original depth array. (Re-running the weighted
+                # motion is cheap; it preserves length 1:1 with input.)
+                uv_eg_full, _ = move_lidar_points_weighted(
+                    frame_t.uv,
+                    frame_t.depth,
+                    motion_pair.flow,
+                    motion_pair.confidence,
+                )
+
+                imu_cmp = compare_imu_correction(
+                    uv_original=frame_t.uv,
+                    uv_imu=uv_imu,
+                    uv_event_guided=uv_eg_full,
+                    depth=frame_t.depth,
+                    image_bgr=frame_t.image,
+                )
+                imu_results_full.append(imu_cmp)
+                entry["imu_eas"] = imu_cmp.get("imu_eas")
+                entry["imu_improvement_pct"] = imu_cmp.get(
+                    "imu_improvement_pct"
+                )
+                entry["imu_event_guided_eas"] = imu_cmp.get(
+                    "event_guided_eas"
+                )
+                entry["imu_event_guided_improvement_pct"] = imu_cmp.get(
+                    "event_guided_improvement_pct"
+                )
+            except (FileNotFoundError, ValueError, KeyError) as exc:
+                print(
+                    f"[IMU] Warning: pair {frame_t_name}->{frame_t1_name} "
+                    f"failed: {exc}"
+                )
+                imu_results_full.append(None)
+            except Exception as exc:
+                print(
+                    f"[IMU] Warning: unexpected failure on pair "
+                    f"{frame_t_name}->{frame_t1_name}: {exc}"
+                )
+                imu_results_full.append(None)
+        else:
+            imu_results_full.append(None)
+
         per_frame_for_json.append(entry)
 
     eas_summary = accumulate_eas_results(eas_results_full)
     stereo_summary = _summarize_stereo_results(stereo_results_full)
+    dgc_summary = _summarize_dgc_results(dgc_results_full)
+    imu_summary = _summarize_imu_results(imu_results_full)
 
-    # Side-by-side per-dataset summary (epsilon, EAS, Stereo).
+    # Side-by-side per-dataset summary (epsilon, EAS, Stereo, DGC, IMU).
     print("")
     print(f"=== {sequence_name} | side-by-side metrics ===")
     epsilon_before = no_smoothing_metrics["original_temporal_mean_px"]
@@ -1271,9 +1571,46 @@ def run_validation_on_dataset(dataset_path):
             "Stereo Consistency            : n/a "
             "(right camera unavailable)"
         )
+    if dgc_summary["n_frames"] > 0:
+        if dgc_summary["improvement_pct_mean"] is not None:
+            dgc_pct_str = f"{dgc_summary['improvement_pct_mean']:+.2f}%"
+        else:
+            dgc_pct_str = "n/a"
+        print(
+            "Depth Gradient Correlation    : "
+            f"{dgc_summary['before_mean']:+.6f} -> "
+            f"{dgc_summary['after_mean']:+.6f} "
+            f"({dgc_pct_str})"
+        )
+    else:
+        print(
+            "Depth Gradient Correlation    : n/a "
+            "(insufficient evaluation pixels)"
+        )
+    if imu_summary["n_frames"] > 0:
+        imu_pct = imu_summary["imu_improvement_pct_mean"]
+        eg_pct = imu_summary["event_guided_improvement_pct_mean"]
+        imu_pct_str = (
+            f"{imu_pct:+.2f}%" if imu_pct is not None else "n/a"
+        )
+        eg_pct_str = (
+            f"{eg_pct:+.2f}%" if eg_pct is not None else "n/a"
+        )
+        print(
+            "IMU Baseline (EAS)            : "
+            f"{imu_summary['imu_eas_mean']:.6f} ({imu_pct_str})  "
+            f"vs Event-Guided "
+            f"{imu_summary['event_guided_eas_mean']:.6f} ({eg_pct_str})"
+        )
+    else:
+        print(
+            "IMU Baseline (EAS)            : n/a (oxts unavailable)"
+        )
 
     eas_summary_json = _json_safe_summary(eas_summary)
     stereo_summary_json = _json_safe_summary(stereo_summary)
+    dgc_summary_json = _json_safe_summary(dgc_summary)
+    imu_summary_json = _json_safe_summary(imu_summary)
     json_path = os.path.join(TEST_LOG_DIR, f"{sequence_name}_eas.json")
     try:
         os.makedirs(TEST_LOG_DIR, exist_ok=True)
@@ -1285,6 +1622,8 @@ def run_validation_on_dataset(dataset_path):
                     "per_frame": per_frame_for_json,
                     "eas_summary": eas_summary_json,
                     "stereo_summary": stereo_summary_json,
+                    "dgc_summary": dgc_summary_json,
+                    "imu_summary": imu_summary_json,
                 },
                 f,
                 indent=2,
@@ -1339,6 +1678,21 @@ def run_validation_on_dataset(dataset_path):
             "improvement_pct_mean": stereo_summary["improvement_pct_mean"],
             "n_frames": stereo_summary["n_frames"],
             "available": stereo_summary["n_frames"] > 0,
+        },
+        "dgc_score": {
+            "before_mean": dgc_summary["before_mean"],
+            "after_mean": dgc_summary["after_mean"],
+            "improvement_pct_mean": dgc_summary["improvement_pct_mean"],
+            "n_frames": dgc_summary["n_frames"],
+        },
+        "imu_score": {
+            "imu_eas_mean": imu_summary["imu_eas_mean"],
+            "event_guided_eas_mean": imu_summary["event_guided_eas_mean"],
+            "imu_improvement_pct_mean": imu_summary[
+                "imu_improvement_pct_mean"
+            ],
+            "n_frames": imu_summary["n_frames"],
+            "available": imu_summary["n_frames"] > 0,
         },
     }
 
@@ -1547,6 +1901,59 @@ def run_all_datasets():
     print(f"  Before mean : {_fmt_mean_std_score(stereo_before_vals)}")
     print(f"  After mean  : {_fmt_mean_std_score(stereo_after_vals)}")
     print(f"  Improvement : {_fmt_mean_std_pct(stereo_impr_vals)}")
+
+    # ---- DGC and IMU aggregates ----
+    # Pulled from each dataset's eas_score-style sub-dicts; same
+    # filtering pattern as stereo. None / non-finite values are
+    # excluded and the contributing count is reported.
+    dgc_before_vals = []
+    dgc_after_vals = []
+    dgc_impr_vals = []
+    imu_eas_vals = []
+    imu_event_eas_vals = []
+    imu_impr_vals = []
+    n_imu_available = 0
+
+    for r in dataset_results:
+        dgc = r.get("dgc_score") or {}
+        if _is_finite_float(dgc.get("before_mean")):
+            dgc_before_vals.append(float(dgc["before_mean"]))
+        if _is_finite_float(dgc.get("after_mean")):
+            dgc_after_vals.append(float(dgc["after_mean"]))
+        if _is_finite_float(dgc.get("improvement_pct_mean")):
+            dgc_impr_vals.append(float(dgc["improvement_pct_mean"]))
+
+        imu = r.get("imu_score") or {}
+        if imu.get("available", False):
+            n_imu_available += 1
+            if _is_finite_float(imu.get("imu_eas_mean")):
+                imu_eas_vals.append(float(imu["imu_eas_mean"]))
+            if _is_finite_float(imu.get("event_guided_eas_mean")):
+                imu_event_eas_vals.append(
+                    float(imu["event_guided_eas_mean"])
+                )
+            if _is_finite_float(imu.get("imu_improvement_pct_mean")):
+                imu_impr_vals.append(
+                    float(imu["imu_improvement_pct_mean"])
+                )
+
+    print("")
+    print("  Depth Gradient Correlation (^ = better alignment)")
+    print(f"    Before:      {_fmt_mean_std_score(dgc_before_vals)}")
+    print(f"    After:       {_fmt_mean_std_score(dgc_after_vals)}")
+    print(f"    Improvement: {_fmt_mean_std_pct(dgc_impr_vals)}")
+
+    print("")
+    print("  IMU Baseline vs Event-Guided (EAS comparison)")
+    print(f"    IMU EAS:          {_fmt_mean_std_score(imu_eas_vals)}")
+    print(
+        f"    Event-Guided EAS: {_fmt_mean_std_score(imu_event_eas_vals)}"
+    )
+    print(f"    IMU Improvement:  {_fmt_mean_std_pct(imu_impr_vals)}")
+    print(
+        f"    Datasets with IMU: "
+        f"{n_imu_available} / {len(dataset_results)}"
+    )
 
 
 if __name__ == "__main__":
