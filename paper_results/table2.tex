@@ -1,0 +1,14 @@
+\begin{table}[t]
+\centering
+\caption{Comparison of LiDAR temporal correction methods on 24 KITTI raw sequences ($N=6584$ frames). SPEAS = Sparse-Point Edge Alignment Score ($\uparrow$ better). Stereo = Stereo Reprojection Consistency ($\uparrow$ better). DGC = Depth Gradient Correlation ($\uparrow$ better). $^{\dagger}$ IMU row uses dense-EAS as proxy. RGB-only optical-flow baseline omitted (data not available).}
+\label{tab:method_comparison}
+\begin{tabular}{lccc}
+\toprule
+Method & SPEAS $\uparrow$ & Stereo $\uparrow$ & DGC $\uparrow$ \\
+\midrule
+Uncorrected & 0.3229 & 0.3022 & -0.0022 \\
+IMU Baseline$^{\dagger}$ & 0.0160 & -- & -- \\
+\textbf{Ours (Event)} & \textbf{0.3248} & \textbf{0.3032} & \textbf{-0.0001} \\
+\bottomrule
+\end{tabular}
+\end{table}
