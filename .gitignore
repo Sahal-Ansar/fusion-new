@@ -7,3 +7,5 @@ depth_results/
 paper_figures/
 paper_results/
 validation_outputs/
+ablation_results/
+runtime_results/
