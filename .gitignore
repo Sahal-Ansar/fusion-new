@@ -9,3 +9,4 @@ paper_results/
 validation_outputs/
 ablation_results/
 runtime_results/
+research_paper_v2/*.png

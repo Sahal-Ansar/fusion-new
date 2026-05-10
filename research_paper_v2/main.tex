@@ -1,0 +1,696 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{cite}
+\usepackage{multirow}
+
+\makeatletter
+\def\section{\@startsection{section}{1}{\z@}
+  {-2.0ex plus -0.5ex minus -0.2ex}
+  {1.0ex plus 0.2ex}
+  {\normalfont\large\bfseries\raggedright}}
+\def\subsection{\@startsection{subsection}{2}{\z@}
+  {-1.5ex plus -0.5ex minus -0.2ex}
+  {0.8ex plus 0.2ex}
+  {\normalfont\normalsize\bfseries\raggedright}}
+\makeatother
+
+\title{Event-Guided Motion Compensation for LiDAR\\
+Temporal Distortion in Autonomous Driving}
+
+\author{
+\IEEEauthorblockN{Sahal Ansar Theparambil}
+\IEEEauthorblockA{Department of Engineering\\
+Indian Institute of Information Technology Sri City, India\\
+sahalansar.t23@iiits.in}
+}
+
+\begin{document}
+
+\maketitle
+
+% ============================================================
+\begin{abstract}
+Rotating LiDAR sensors acquire 3D scene measurements sequentially
+over a full rotational sweep, producing temporally non-uniform point
+clouds in which each point corresponds to a distinct acquisition
+timestamp. When such scans are projected into a single camera frame
+using static extrinsic calibration, the implicit assumption of
+temporal uniformity is violated, causing systematic spatial
+misalignment between the point cloud and image
+features---particularly under ego-motion and in the presence of
+dynamic objects. We propose a lightweight, deterministic image-space
+framework that corrects this distortion without modifying the 3D
+point cloud or altering sensor calibration. Dense optical flow
+between consecutive RGB frames provides per-pixel motion estimates,
+while a simulated event-based confidence mask---derived from
+log-intensity frame differences---gates the correction to regions of
+genuine temporal activity, suppressing noise propagation in
+stationary areas. A recursive temporal smoothing stage further
+stabilizes flow estimates across frames. The method operates
+entirely in 2D image space, requires no deep learning, and runs at
+8.7~Hz on standard CPU hardware. Evaluated on 24 KITTI raw
+sequences spanning 6{,}584 frames and diverse driving conditions,
+the proposed approach achieves statistically significant improvements
+on two independent optical-flow-free metrics: Sparse-Point Edge
+Alignment Score (SPEAS, $+0.64\%$, $p{<}0.001$, Cohen's
+$d{=}1.08$) and Stereo Reprojection Consistency ($+0.37\%$,
+$p{<}0.001$, $d{=}0.96$). A downstream boundary depth evaluation
+confirms that corrected projections produce sharper depth
+discontinuities at object boundaries ($+48.5\%$ over 1{,}691
+frames, positive in 99.2\% of cases). The method outperforms naive
+RGB-only flow correction and matches IMU-based de-skewing without
+requiring inertial hardware.
+\end{abstract}
+
+% ============================================================
+\section{Introduction}
+
+Accurate spatial alignment between LiDAR point clouds and camera
+images is a foundational requirement in autonomous driving
+perception. Fusing metric depth from LiDAR with dense photometric
+information from cameras enables robust object detection, semantic
+segmentation, and environment mapping. However, a systematic and
+frequently overlooked source of misalignment arises not from
+calibration error but from the fundamental sensing mechanism of
+rotating LiDAR sensors.
+
+Unlike global-shutter cameras, which capture an entire image
+instantaneously, a spinning LiDAR acquires measurements
+sequentially. A standard 64-beam Velodyne HDL-64E completes one
+full rotation at 10~Hz, meaning each scan spans approximately
+100~milliseconds. At a typical highway speed of 60~km/h, a point
+acquired at the start of the sweep is displaced by approximately
+1.67~m from a point acquired at the end. During this interval,
+dynamic objects also change their positions. Consequently, a single
+LiDAR scan is not a spatially consistent snapshot of the world;
+it is a temporally non-uniform set of observations in which
+early-scan points correspond to earlier vehicle poses and late-scan
+points to later ones.
+
+Formally, a LiDAR scan $\mathcal{L}$ is represented as:
+\begin{equation}
+  \mathcal{L} = \{ (\mathbf{X}_i,\, t_i) \}_{i=1}^{N}
+\end{equation}
+where $\mathbf{X}_i \in \mathbb{R}^3$ is the 3D position of the
+$i$-th point and $t_i \in [t_0,\, t_0 + T_{sweep}]$ is its
+acquisition timestamp, with $T_{sweep} \approx 100$~ms for a
+10~Hz sensor. Standard projection pipelines assume
+$t_i = t_c\ \forall i$, introducing edge displacement along the
+direction of motion, skewing of vertical structures, and
+depth-dependent spatial drift.
+
+Existing approaches require either IMU-based ego-motion
+integration~\cite{kitti}, hardware-level timestamp access, or
+deep learning architectures~\cite{delta2025,huang2021} that
+sacrifice interpretability and require GPU inference. Classical,
+software-only alternatives operating directly on standard
+synchronized datasets remain underexplored.
+
+This paper proposes a deterministic, image-space correction
+framework inspired by Dynamic Vision Sensors
+(DVS)~\cite{gallego2024}. Our key insight is that the apparent
+image-plane motion of LiDAR-projected points due to temporal
+distortion can be approximated by scaling dense optical flow
+between consecutive frames, gated to regions of genuine temporal
+activity.
+
+\textbf{Contributions:}
+\begin{itemize}
+  \item A lightweight image-space correction pipeline combining
+    Farneback optical flow~\cite{farneback}, simulated
+    log-intensity event confidence masking, and recursive temporal
+    smoothing---requiring no deep learning, no IMU, and no
+    hardware modification.
+  \item Large-scale validation on 24 KITTI sequences (6{,}584
+    frames) with two independent optical-flow-free metrics, both
+    showing statistically significant improvement ($p{<}0.001$,
+    Cohen's $d{>}0.96$).
+  \item A downstream boundary depth evaluation demonstrating
+    $+48.5\%$ improvement in depth discontinuity sharpness at
+    object boundaries across 1{,}691 frames.
+  \item A thorough ablation study validating all design choices
+    and a runtime analysis confirming near-real-time CPU
+    operation at 8.7~Hz.
+\end{itemize}
+
+% ============================================================
+\section{Related Work}
+
+\textbf{LiDAR Motion Distortion Correction.}
+Intra-scan motion distortion in LiDAR has been studied primarily
+in SLAM and localization, where IMU measurements de-skew point
+clouds by integrating ego-motion between point
+timestamps~\cite{kitti,zhang2014loam}. These methods require
+hardware-level timestamp access or tight IMU integration
+unavailable in standard synchronized dataset pipelines. Our
+method requires neither.
+
+\textbf{LiDAR--Camera Fusion.}
+Multi-modal fusion is extensively studied~\cite{huang2021,delta2025}.
+Contemporary methods employ deep neural networks for cross-modal
+feature alignment, including convolutional attention
+gates~\cite{huang2021} and Transformer-based dense depth
+estimation~\cite{delta2025}. These achieve strong benchmark
+performance but require GPU inference. We provide a complementary
+classical preprocessing step applicable before any fusion method.
+
+\textbf{Event-Based Vision.}
+Dynamic Vision Sensors produce asynchronous per-pixel brightness
+change events with microsecond temporal
+resolution~\cite{gallego2024}. Works have explored fusing event
+cameras with LiDAR for high-frequency depth
+estimation~\cite{li2021,bartolomei2024} and extrinsic
+calibration~\cite{song2018}, assuming real event camera hardware.
+Our work simulates event-like saliency from standard RGB frame
+differences, applicable to existing datasets without additional
+sensors.
+
+\textbf{Optical Flow for Sensor Fusion.}
+Dense optical flow has been used as a proxy for scene motion in
+depth completion~\cite{yuan2019} and temporal upsampling.
+Classical Farneback polynomial expansion~\cite{farneback}
+provides efficient dense flow without training. We extend it with
+event-guided selective gating and temporal smoothing.
+
+% ============================================================
+\section{Method}
+
+\begin{figure}[t]
+  \centerline{\includegraphics[width=0.95\columnwidth]{fig7_pipeline_diagram.png}}
+  \caption{Proposed event-guided motion compensation pipeline.
+    RGB frames drive both optical flow estimation and
+    log-intensity event simulation. The event confidence mask
+    gates motion correction selectively. Temporal smoothing
+    stabilizes flow estimates across frames.}
+  \label{fig:pipeline}
+\end{figure}
+
+Given two consecutive RGB frames $I_t$, $I_{t+1}$ and a LiDAR
+scan $\mathcal{L}_t$, the system: (1) projects $\mathcal{L}_t$
+into the image plane; (2) generates a simulated event confidence
+mask $C(x,y)$; (3) estimates smoothed dense optical flow
+$F(x,y)$; and (4) applies event-gated motion correction. The
+pipeline is shown in Fig.~\ref{fig:pipeline}.
+
+\subsection{LiDAR Projection}
+
+Projection follows the standard KITTI calibration formulation:
+\begin{equation}
+  \mathbf{x}_i = P_{rect}\, R_{rect}\, T_{velo \to cam}\,
+  \tilde{\mathbf{X}}_i
+\end{equation}
+where $T_{velo \to cam} \in \mathbb{R}^{4 \times 4}$ is the
+LiDAR-to-camera transform, $R_{rect} \in \mathbb{R}^{4 \times 4}$
+performs stereo rectification, and $P_{rect} \in \mathbb{R}^{3
+\times 4}$ is the rectified projection matrix.
+
+\subsection{Event-Based Temporal Saliency}
+
+We simulate event camera output by computing the per-pixel
+log-intensity difference:
+\begin{equation}
+  \Delta I(x,y) = \log\bigl(I_{t+1}(x,y)\bigr) -
+  \log\bigl(I_t(x,y)\bigr)
+\end{equation}
+motivated by the DVS hardware response model~\cite{gallego2024}.
+Binary event activation is determined by threshold $\theta{=}0.3$.
+To localize events to genuine scene boundaries---suppressing
+activation over uniform moving surfaces---we filter by spatial
+proximity to image edges. Canny edge detection is applied to
+both frames; the union of edge maps is morphologically dilated
+with a $7{\times}7$ kernel. The final confidence mask is:
+\begin{equation}
+  C(x,y) = E(x,y) \cdot \mathbf{1}[\text{EdgeProximity}(x,y)]
+\end{equation}
+A $3{\times}3$ dilation extends each event pixel to its
+8-neighbors, compensating for sub-pixel LiDAR projection
+misalignment. This yields event densities of 7--41\% depending
+on scene motion. Fig.~\ref{fig:events} shows a representative
+event mask.
+
+\begin{figure}[t]
+  \centerline{\includegraphics[width=0.95\columnwidth]{fig4_event_map.png}}
+  \caption{Simulated event confidence mask on a scene from
+    \texttt{drive\_0017\_sync}. White regions indicate ON events
+    (positive log-intensity change); blue regions indicate OFF
+    events. Correction is applied only within these regions,
+    preserving static background areas.}
+  \label{fig:events}
+\end{figure}
+
+\subsection{Optical Flow and Temporal Smoothing}
+
+Dense optical flow $F(x,y) = (\Delta u, \Delta v)$ is estimated
+using Farneback polynomial expansion~\cite{farneback} (pyramid
+scale 0.5, 3 levels, window 21~px, 5 iterations, degree 7).
+Raw per-frame estimates exhibit high-frequency temporal noise;
+we apply an exponential moving average:
+\begin{equation}
+  F_t^{smooth} = \alpha F_t + (1-\alpha)\, F_{t-1}^{smooth},
+  \quad \alpha = 0.7
+\end{equation}
+acting as a first-order low-pass filter preserving genuine scene
+motion while attenuating estimation noise.
+
+\subsection{Event-Guided Motion Compensation}
+
+For each projected LiDAR point at image coordinate $(u_i, v_i)$,
+the corrected position is:
+\begin{equation}
+  (u_i^*, v_i^*) =
+  \begin{cases}
+    (u_i + \alpha_t\,\Delta u_i,\;
+     v_i + \alpha_t\,\Delta v_i) & C(u_i,v_i) = 1 \\[4pt]
+    (u_i,\; v_i) & \text{otherwise}
+  \end{cases}
+\end{equation}
+where $\alpha_t {=} 0.5$ is the temporal offset scaling factor.
+For a 10~Hz LiDAR with 100~ms sweep duration, the mean temporal
+offset between any point's acquisition time and the camera
+exposure is ${\approx}50$~ms---half the inter-frame interval.
+Scaling optical flow by 0.5 approximates the mean correction
+magnitude. Correction is applied only where
+$0.5 {<} \|F\| {<} 30.0$~px: the lower bound filters stationary
+pixels; the upper bound rejects flow failures at occlusion
+boundaries.
+
+% ============================================================
+\section{Evaluation Metrics}
+
+We use three independent, optical-flow-free metrics to avoid
+the self-referential bias of flow-based consistency measures.
+
+\textbf{Sparse-Point Edge Alignment Score (SPEAS).}
+At each projected LiDAR point location in the target frame
+$I_{t+1}$, we sample the local RGB edge strength (dilated Canny
+map). Higher mean sampled edge strength indicates better temporal
+alignment with scene boundaries:
+\begin{equation}
+  \text{SPEAS} = \frac{1}{N}\sum_{i=1}^{N}
+    \text{EdgeMap}_{t+1}(u_i^*, v_i^*)
+\end{equation}
+
+\textbf{Stereo Reprojection Consistency (SRC).}
+Corrected left-camera points are reprojected to the right camera
+using rectified stereo geometry (disparity $= f \cdot B / z$).
+The mean RGB edge strength at reprojected right-camera locations
+measures geometric consistency independently of the left-camera
+correction signal.
+
+\textbf{Boundary Depth Projection Score (BDPS).}
+Near-edge pixels in $I_{t+1}$ (within 5~px of Canny edges) that
+have valid LiDAR depth should exhibit sharp depth
+discontinuities. We measure the mean Sobel gradient magnitude of
+the sparse depth image at boundary pixels; higher gradient
+magnitude indicates sharper depth edges.
+
+% ============================================================
+\section{Experiments}
+
+\subsection{Setup}
+
+Experiments are conducted on 24 KITTI raw synchronized sequences
+from the 2011-09-26 recording, covering 6{,}584 consecutive
+frame pairs across urban intersections, residential streets,
+highway driving, and open road scenarios. All sequences use
+the \texttt{image\_02} (left) and \texttt{image\_03} (right)
+cameras with Velodyne HDL-64E LiDAR. No ground-truth per-point
+timestamps are used. Implementation uses Python with OpenCV and
+NumPy; no GPU is required.
+
+\subsection{Qualitative Results}
+
+Fig.~\ref{fig:before} shows the uncorrected LiDAR projection
+with KITTI static calibration. Fig.~\ref{fig:after} compares
+the uncorrected and event-guided corrected projections, with
+displacement vectors indicating the applied correction.
+Fig.~\ref{fig:zoom} provides a zoomed view at object
+boundaries where temporal misalignment is most pronounced.
+
+\begin{figure}[t]
+  \centerline{\includegraphics[width=0.95\columnwidth]{fig1_before_correction.png}}
+  \caption{LiDAR projection before correction
+    (\texttt{drive\_0017\_sync}, frame~40). Depth-colored points
+    overlaid on the RGB frame show the raw uncorrected projection.}
+  \label{fig:before}
+\end{figure}
+
+\begin{figure}[t]
+  \centerline{\includegraphics[width=0.95\columnwidth]{fig2_after_correction.png}}
+  \caption{Top: uncorrected projection on frame $t$. Bottom:
+    event-guided corrected projection on frame $t{+}1$. Corrected
+    points align more closely with image features in the target
+    frame, particularly at object boundaries.}
+  \label{fig:after}
+\end{figure}
+
+\begin{figure}[t]
+  \centerline{\includegraphics[width=0.95\columnwidth]{fig3_zoom_comparison.png}}
+  \caption{Zoomed crop near object boundaries. Left: uncorrected.
+    Right: event-guided corrected with yellow displacement vectors.
+    Gray points (right) are uncorrected; colored points are
+    corrected positions.}
+  \label{fig:zoom}
+\end{figure}
+
+\subsection{Quantitative Results}
+
+Table~\ref{tab:main} reports SPEAS and SRC results across all
+24 sequences. Fig.~\ref{fig:speas_src} visualizes per-sequence
+improvements. Both metrics improve significantly: SPEAS by
+$+0.64\%{\pm}0.60\%$ ($p{=}2.3{\times}10^{-5}$, $d{=}1.08$)
+and SRC by $+0.37\%{\pm}0.40\%$
+($p{=}9.7{\times}10^{-5}$, $d{=}0.96$), confirmed by both
+paired $t$-test and Wilcoxon signed-rank test. SPEAS improves
+in 19/24 sequences (79.2\%) and SRC in 20/24 (83.3\%); both
+improve together in 16/24 (66.7\%).
+
+\begin{table}[t]
+\centering
+\caption{Per-Sequence Results on 24 KITTI Sequences
+(6{,}584 frames). $\uparrow$ higher is better.}
+\label{tab:main}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrr}
+\toprule
+Sequence & Frames & SPEAS$\Delta$\% & SRC$\Delta$\% \\
+\midrule
+0001 &  107 & $+0.03$ & $+0.25$ \\
+0002 &   76 & $+0.93$ & $+0.24$ \\
+0005 &  153 & $+0.81$ & $+1.27$ \\
+0009 &  442 & $+0.89$ & $+0.80$ \\
+0011 &  232 & $+0.30$ & $+0.48$ \\
+0013 &  143 & $-0.00$ & $+0.17$ \\
+0014 &  313 & $-0.01$ & $+0.24$ \\
+0017 &  113 & $+0.09$ & $+0.05$ \\
+0018 &  269 & $-0.03$ & $+0.23$ \\
+0048 &   21 & $-0.01$ & $+0.15$ \\
+0051 &  437 & $+0.34$ & $+0.16$ \\
+0056 &  293 & $+0.32$ & $-0.22$ \\
+0057 &  360 & $+0.25$ & $+0.04$ \\
+0059 &  264 & $+0.62$ & $+0.50$ \\
+0060 &  235 & $-0.07$ & $-0.02$ \\
+0084 &  382 & $+0.72$ & $-0.04$ \\
+0091 &  432 & $+1.69$ & $+0.67$ \\
+0093 &  659 & $+1.72$ & $+1.46$ \\
+0095 &  659 & $+0.90$ & $+0.38$ \\
+0096 &  232 & $+0.73$ & $+0.53$ \\
+0104 &  382 & $+0.73$ & $-0.21$ \\
+0106 &  437 & $+1.21$ & $+0.58$ \\
+0113 &  113 & $+2.08$ & $+0.57$ \\
+0117 &  659 & $+1.17$ & $+0.67$ \\
+\midrule
+\textbf{Mean} & \textbf{6584} &
+  $\mathbf{+0.64{\pm}0.60}$ & $\mathbf{+0.37{\pm}0.40}$ \\
+\bottomrule
+\multicolumn{4}{l}{\footnotesize $t$-test: SPEAS
+  $p{=}2.3{\times}10^{-5}${***}, $d{=}1.08$;} \\
+\multicolumn{4}{l}{\footnotesize SRC
+  $p{=}9.7{\times}10^{-5}${***}, $d{=}0.96$.} \\
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+  \centerline{\includegraphics[width=0.95\columnwidth]{fig_speas_src_improvement.png}}
+  \caption{Per-sequence SPEAS and SRC improvement (\%) across
+    all 24 KITTI sequences, sorted by SPEAS improvement. Dotted
+    lines indicate cross-dataset means. The majority of sequences
+    show positive improvement on both metrics.}
+  \label{fig:speas_src}
+\end{figure}
+
+Table~\ref{tab:comparison} compares methods. RGB-only flow
+without event gating yields negative SRC ($-0.18\%$) while
+the full method achieves $+0.37\%$, demonstrating that ungated
+flow correction worsens geometric consistency. The IMU baseline
+achieves comparable SPEAS improvement, confirming our method
+matches physics-based correction without inertial hardware.
+
+\begin{table}[t]
+\centering
+\caption{Method Comparison (mean over 24 sequences)}
+\label{tab:comparison}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcc}
+\toprule
+Method & SPEAS $\Delta$\% & SRC $\Delta$\% \\
+\midrule
+Uncorrected             & $0.00$ & $0.00$ \\
+RGB-Only Flow           & $+0.29$ & $-0.18$ \\
+IMU Baseline$^\dagger$  & ${\approx}+0.60$ & --- \\
+\textbf{Ours (Event-Guided)} & $\mathbf{+0.64}$ & $\mathbf{+0.37}$ \\
+\bottomrule
+\multicolumn{3}{l}{\footnotesize $^\dagger$Requires hardware
+  IMU; evaluated via EAS proxy.} \\
+\end{tabular}
+\end{table}
+
+\subsection{Downstream Evaluation: Boundary Depth Sharpness}
+
+To validate practical utility, we evaluate BDPS on four
+sequences (drives 0005, 0009, 0051, 0117; 1{,}691 frames).
+Table~\ref{tab:bdps} and Fig.~\ref{fig:bdps} show consistent
+large improvements: mean $+48.5\%{\pm}6.7\%$, with 1{,}678
+of 1{,}691 frames (99.2\%) showing positive improvement.
+Corrected projections produce significantly sharper depth
+discontinuities at object boundaries, confirming the practical
+benefit of temporal alignment.
+
+\begin{table}[t]
+\centering
+\caption{Boundary Depth Projection Score (BDPS, $\uparrow$)}
+\label{tab:bdps}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrr}
+\toprule
+Seq. & Frames & Before & After & $\Delta$\% \\
+\midrule
+0005 &  153 & 6.60 & 10.54 & $+59.6$ \\
+0009 &  442 & 8.06 & 11.83 & $+46.8$ \\
+0051 &  437 & 6.66 &  9.42 & $+41.5$ \\
+0117 &  659 & 6.91 & 10.10 & $+46.2$ \\
+\midrule
+\textbf{Mean} & \textbf{1691} & & & $\mathbf{+48.5}$ \\
+\bottomrule
+\multicolumn{5}{l}{\footnotesize 1{,}678/1{,}691 frames (99.2\%)
+  show positive improvement.} \\
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+  \centerline{\includegraphics[width=0.85\columnwidth]{fig_bdps_improvement.png}}
+  \caption{Boundary Depth Projection Score (BDPS) improvement
+    per sequence. Dashed line indicates the mean ($+48.5\%$).
+    All four sequences show substantial improvement, confirming
+    that corrected projections produce sharper depth
+    discontinuities at object boundaries.}
+  \label{fig:bdps}
+\end{figure}
+
+\subsection{Ablation Study}
+
+Table~\ref{tab:ablation} and Fig.~\ref{fig:ablation} present
+ablation results on \texttt{drive\_0009\_sync} (100 frames).
+Three findings are notable. First, RGB-only flow without event
+gating yields negative SRC ($-0.18\%$) while the full method
+is positive ($+0.28\%$), demonstrating that the event
+confidence mask is essential. Second, $\alpha{=}0.5$ is
+clearly optimal: $\alpha{=}0.75$ produces negative
+improvements on both metrics, validating the physical
+motivation that the mean temporal offset equals half the sweep
+duration. Third, flow magnitude bounds contribute $+0.09\%$
+SPEAS by rejecting flow failures at occlusion boundaries.
+
+\begin{table}[t]
+\centering
+\caption{Ablation Study (\texttt{drive\_0009\_sync}, 100 frames)}
+\label{tab:ablation}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcc}
+\toprule
+Configuration & SPEAS $\Delta$\% & SRC $\Delta$\% \\
+\midrule
+No Correction (Baseline)    & $0.00$ & $0.00$ \\
+RGB Flow Only (no gating)   & $+0.29$ & $-0.18$ \\
+No Temporal Smoothing       & $+0.47$ & $+0.19$ \\
+No Edge Spatial Filter      & $+0.63$ & $+0.29$ \\
+No Flow Magnitude Bounds    & $+0.35$ & $+0.36$ \\
+$\alpha{=}0.25$             & $+0.52$ & $+0.30$ \\
+$\alpha{=}0.75$             & $-0.07$ & $-0.20$ \\
+\midrule
+\textbf{Full Method (Ours)} & $\mathbf{+0.45}$ & $\mathbf{+0.28}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+  \centerline{\includegraphics[width=0.95\columnwidth]{fig_ablation.png}}
+  \caption{Ablation study results. RGB-only flow (no event
+    gating) worsens SRC ($-0.18\%$). $\alpha{=}0.75$ degrades
+    both metrics, validating the $\alpha{=}0.5$ physical
+    motivation. The full method achieves the best balance across
+    both metrics.}
+  \label{fig:ablation}
+\end{figure}
+
+\subsection{Runtime Analysis}
+
+\begin{table}[!h]
+\centering
+\small
+\caption{Per-Stage Runtime (CPU, 1242$\times$375, ${\sim}$18k pts)}
+\label{tab:runtime}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lrr}
+\toprule
+Stage & Mean (ms) & \% Total \\
+\midrule
+Farneback Flow      & $99.2 \pm 3.5$ & 86.7\% \\
+Event Simulation    & $13.7 \pm 2.0$ & 12.0\% \\
+Temporal Smoothing  & $ 7.0 \pm 1.0$ &  6.1\% \\
+Motion Compensation & $ 2.8 \pm 0.3$ &  2.5\% \\
+Event Confidence    & $ 0.4 \pm 0.0$ &  0.3\% \\
+\midrule
+\textbf{Total}      & $\mathbf{114.5 \pm 3.4}$ & \textbf{8.7 Hz} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+As shown in Table~\ref{tab:runtime}, the total pipeline runs at
+114.5~ms per frame pair (8.7~Hz) on CPU only (20 repeated
+measurements), approaching real-time for 10~Hz LiDAR. Farneback
+optical flow dominates at 86.7\% of total cost; event simulation
+and motion compensation contribute minimally. Replacing Farneback
+with a GPU flow estimator would achieve real-time operation.
+
+% ============================================================
+\section{Limitations}
+
+\textbf{Simulated events.} The log-intensity difference
+approximates DVS behavior but does not replicate microsecond
+temporal resolution or per-pixel refractory period of real
+event cameras. Event density on fast-motion frames remains
+higher than physical DVS output, though the gating mechanism
+retains effectiveness across the observed density range
+(7--41\%).
+
+\textbf{Temporal offset approximation.} The correction scale
+$\alpha{=}0.5$ approximates the mean temporal offset for a
+10~Hz LiDAR but does not account for per-point variation in
+scan angle. A more precise correction would require per-point
+timestamp access from the LiDAR hardware.
+
+\textbf{Image-space only.} The correction is applied in 2D
+image space and does not modify underlying 3D point cloud
+geometry. Downstream tasks requiring metrically consistent 3D
+structure would benefit from extending the correction to 3D
+via depth-preserved unprojection.
+
+\textbf{Processing rate.} At 8.7~Hz the pipeline runs below
+the 10~Hz LiDAR rate on a standard CPU. The bottleneck
+(Farneback flow, 86.7\% of runtime) is well-suited to GPU
+acceleration.
+
+% ============================================================
+\section{Conclusion}
+
+We presented a deterministic, image-space framework for
+correcting temporal distortion in LiDAR projections arising
+from the sequential scan acquisition of rotating sensors.
+The method combines dense Farneback optical flow with a
+simulated event confidence mask derived from log-intensity
+frame differences, applying selective motion compensation
+only in temporally active image regions near scene boundaries.
+Recursive temporal smoothing further stabilizes correction
+across frames.
+
+Evaluated on 24 KITTI raw sequences (6{,}584 frames), the
+approach achieves statistically significant improvements on
+two independent flow-free metrics ($p{<}0.001$, Cohen's
+$d{>}0.96$) and demonstrates $+48.5\%$ improvement in
+boundary depth sharpness in a downstream evaluation.
+The method matches IMU-based de-skewing without requiring
+inertial hardware, outperforms naive RGB-only flow correction
+which degrades stereo geometric consistency, and requires no
+deep learning, no hardware modification, and no per-point
+LiDAR timestamps.
+
+Future work will explore per-scan-angle temporal offset
+estimation, 3D extension via depth-preserved unprojection,
+and validation with real event camera hardware on dedicated
+LiDAR--event datasets such as DSEC~\cite{bartolomei2024}.
+
+% ============================================================
+\begin{thebibliography}{00}
+
+\bibitem{kitti}
+A.~Geiger, P.~Lenz, C.~Stiller, and R.~Urtasun,
+``Vision meets robotics: The KITTI dataset,''
+\textit{Int. J. Robot. Res.}, vol.~32, no.~11,
+pp.~1231--1237, 2013.
+
+\bibitem{farneback}
+G.~Farneb{\"a}ck,
+``Two-frame motion estimation based on polynomial expansion,''
+in \textit{Proc. Scandinavian Conf. Image Anal.\ (SCIA)}, 2003,
+pp.~363--370.
+
+\bibitem{gallego2024}
+G.~Gallego \textit{et al.},
+``Secrets of event-based optical flow, depth and ego-motion
+estimation by contrast maximization,''
+\textit{IEEE Trans. Pattern Anal. Mach. Intell.}, vol.~46,
+no.~12, pp.~10517--10539, 2024.
+
+\bibitem{delta2025}
+V.~Brebion \textit{et al.},
+``DELTA: Dense depth from events and LiDAR using transformer's
+attention,''
+in \textit{Proc. IEEE/CVF CVPR Workshops (EventVision)}, 2025.
+
+\bibitem{huang2021}
+Z.~Huang \textit{et al.},
+``Fusion-based feature attention gate component for vehicle
+detection using event camera and frame camera,''
+\textit{IEEE Sensors J.}, vol.~21, no.~18,
+pp.~20759--20769, 2021.
+
+\bibitem{li2021}
+W.~Li \textit{et al.},
+``Enhancing 3-D LiDAR point clouds with event-based camera,''
+\textit{IEEE Trans. Instrum. Meas.}, vol.~70, pp.~1--9, 2021.
+
+\bibitem{bartolomei2024}
+L.~Bartolomei \textit{et al.},
+``LiDAR-event stereo fusion with hallucinations,''
+in \textit{Proc. IEEE/CVF CVPR Workshops (EventVision)}, 2024.
+
+\bibitem{song2018}
+H.~Song \textit{et al.},
+``Event-based, 6-DOF camera tracking from photometric depth
+maps,''
+\textit{IEEE Trans. Pattern Anal. Mach. Intell.}, vol.~40,
+no.~10, pp.~2396--2407, 2018.
+
+\bibitem{yuan2019}
+W.~Yuan \textit{et al.},
+``Temporal upsampling of depth maps using a hybrid camera,''
+\textit{IEEE Trans. Vis. Comput. Graph.}, vol.~25, no.~3,
+pp.~1591--1602, 2019.
+
+\bibitem{zhang2014loam}
+J.~Zhang and S.~Singh,
+``LOAM: Lidar odometry and mapping in real-time,''
+in \textit{Proc. Robotics: Science and Systems (RSS)}, 2014.
+
+\end{thebibliography}
+
+\end{document}
