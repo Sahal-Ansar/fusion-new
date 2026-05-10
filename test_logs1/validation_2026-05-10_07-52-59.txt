@@ -1,0 +1,266 @@
+Tr_velo_to_cam (4x4):
+[[ 7.533745e-03 -9.999714e-01 -6.166020e-04 -4.069766e-03]
+ [ 1.480249e-02  7.280733e-04 -9.998902e-01 -7.631618e-02]
+ [ 9.998621e-01  7.523790e-03  1.480755e-02 -2.717806e-01]
+ [ 0.000000e+00  0.000000e+00  0.000000e+00  1.000000e+00]]
+Tr translation (m): tx=-0.004070, ty=-0.076316, tz=-0.271781
+P_rect_02 (3x4):
+[[7.215377e+02 0.000000e+00 6.095593e+02 4.485728e+01]
+ [0.000000e+00 7.215377e+02 1.728540e+02 2.163791e-01]
+ [0.000000e+00 0.000000e+00 1.000000e+00 2.745884e-03]]
+R_rect (4x4):
+[[ 0.9999239   0.00983776 -0.00744505  0.        ]
+ [-0.0098698   0.9999421  -0.00427846  0.        ]
+ [ 0.00740253  0.00435161  0.9999631   0.        ]
+ [ 0.          0.          0.          1.        ]]
+R_rect max deviation from identity: 9.869795e-03
+Event density: 0.4084  (target: 0.05 to 0.20)
+Total points: 16847
+Valid moved points: 5521
+Movement ratio: 0.3277
+Event density: 0.4340  (target: 0.05 to 0.20)
+Total points: 16565
+Valid moved points: 5205
+Movement ratio: 0.3142
+Event density: 0.4635  (target: 0.05 to 0.20)
+Total points: 16821
+Valid moved points: 5465
+Movement ratio: 0.3249
+Event density: 0.4370  (target: 0.05 to 0.20)
+Total points: 17555
+Valid moved points: 5128
+Movement ratio: 0.2921
+Event density: 0.4146  (target: 0.05 to 0.20)
+Total points: 18262
+Valid moved points: 4886
+Movement ratio: 0.2676
+Event density: 0.4175  (target: 0.05 to 0.20)
+Total points: 18274
+Valid moved points: 5011
+Movement ratio: 0.2742
+Event density: 0.4631  (target: 0.05 to 0.20)
+Total points: 17718
+Valid moved points: 5209
+Movement ratio: 0.2940
+Event density: 0.4735  (target: 0.05 to 0.20)
+Total points: 17363
+Valid moved points: 7112
+Movement ratio: 0.4096
+Event density: 0.4749  (target: 0.05 to 0.20)
+Total points: 17575
+Valid moved points: 6797
+Movement ratio: 0.3867
+Event density: 0.4609  (target: 0.05 to 0.20)
+Total points: 17847
+Valid moved points: 7159
+Movement ratio: 0.4011
+Event density: 0.4435  (target: 0.05 to 0.20)
+Total points: 18058
+Valid moved points: 6537
+Movement ratio: 0.3620
+Event density: 0.4448  (target: 0.05 to 0.20)
+Total points: 17541
+Valid moved points: 6315
+Movement ratio: 0.3600
+Event density: 0.4902  (target: 0.05 to 0.20)
+Total points: 17273
+Valid moved points: 7674
+Movement ratio: 0.4443
+Event density: 0.5181  (target: 0.05 to 0.20)
+Total points: 16930
+Valid moved points: 6446
+Movement ratio: 0.3807
+Event density: 0.5153  (target: 0.05 to 0.20)
+Total points: 17081
+Valid moved points: 5335
+Movement ratio: 0.3123
+Event density: 0.5222  (target: 0.05 to 0.20)
+Total points: 17939
+Valid moved points: 7308
+Movement ratio: 0.4074
+Event density: 0.5208  (target: 0.05 to 0.20)
+Total points: 18800
+Valid moved points: 8410
+Movement ratio: 0.4473
+Event density: 0.4968  (target: 0.05 to 0.20)
+Total points: 19382
+Valid moved points: 8281
+Movement ratio: 0.4273
+Event density: 0.4740  (target: 0.05 to 0.20)
+Total points: 19574
+Valid moved points: 7741
+Movement ratio: 0.3955
+Event density: 0.4397  (target: 0.05 to 0.20)
+Total points: 19339
+Valid moved points: 7252
+Movement ratio: 0.3750
+Event density: 0.4337  (target: 0.05 to 0.20)
+Total points: 19380
+Valid moved points: 6148
+Movement ratio: 0.3172
+Event density: 0.4143  (target: 0.05 to 0.20)
+Total points: 19454
+Valid moved points: 5733
+Movement ratio: 0.2947
+Event density: 0.4036  (target: 0.05 to 0.20)
+Total points: 19547
+Valid moved points: 5969
+Movement ratio: 0.3054
+Event density: 0.3991  (target: 0.05 to 0.20)
+Total points: 19598
+Valid moved points: 6075
+Movement ratio: 0.3100
+Event density: 0.4121  (target: 0.05 to 0.20)
+Total points: 19564
+Valid moved points: 6641
+Movement ratio: 0.3395
+Event density: 0.4388  (target: 0.05 to 0.20)
+Total points: 19546
+Valid moved points: 6969
+Movement ratio: 0.3565
+Event density: 0.4418  (target: 0.05 to 0.20)
+Total points: 19505
+Valid moved points: 6485
+Movement ratio: 0.3325
+Event density: 0.4607  (target: 0.05 to 0.20)
+Total points: 19453
+Valid moved points: 7271
+Movement ratio: 0.3738
+Event density: 0.4851  (target: 0.05 to 0.20)
+Total points: 19411
+Valid moved points: 6294
+Movement ratio: 0.3242
+Event density: 0.4968  (target: 0.05 to 0.20)
+Total points: 19395
+Valid moved points: 8383
+Movement ratio: 0.4322
+Event density: 0.5210  (target: 0.05 to 0.20)
+Total points: 19329
+Valid moved points: 8381
+Movement ratio: 0.4336
+Event density: 0.5416  (target: 0.05 to 0.20)
+Total points: 19273
+Valid moved points: 7374
+Movement ratio: 0.3826
+Event density: 0.5784  (target: 0.05 to 0.20)
+Total points: 19277
+Valid moved points: 7137
+Movement ratio: 0.3702
+Event density: 0.5940  (target: 0.05 to 0.20)
+Total points: 19145
+Valid moved points: 6506
+Movement ratio: 0.3398
+Event density: 0.6017  (target: 0.05 to 0.20)
+Total points: 19059
+Valid moved points: 7519
+Movement ratio: 0.3945
+Event density: 0.6144  (target: 0.05 to 0.20)
+Total points: 18893
+Valid moved points: 6937
+Movement ratio: 0.3672
+Event density: 0.6118  (target: 0.05 to 0.20)
+Total points: 18776
+Valid moved points: 5641
+Movement ratio: 0.3004
+Event density: 0.5948  (target: 0.05 to 0.20)
+Total points: 18664
+Valid moved points: 6497
+Movement ratio: 0.3481
+Event density: 0.5862  (target: 0.05 to 0.20)
+Total points: 18398
+Valid moved points: 7536
+Movement ratio: 0.4096
+Event density: 0.5816  (target: 0.05 to 0.20)
+Total points: 17989
+Valid moved points: 6889
+Movement ratio: 0.3830
+Event density: 0.5786  (target: 0.05 to 0.20)
+Total points: 17528
+Valid moved points: 5970
+Movement ratio: 0.3406
+Event density: 0.5821  (target: 0.05 to 0.20)
+Total points: 17270
+Valid moved points: 6063
+Movement ratio: 0.3511
+Event density: 0.6018  (target: 0.05 to 0.20)
+Total points: 17401
+Valid moved points: 6799
+Movement ratio: 0.3907
+Event density: 0.6037  (target: 0.05 to 0.20)
+Total points: 17779
+Valid moved points: 7469
+Movement ratio: 0.4201
+Event density: 0.6052  (target: 0.05 to 0.20)
+Total points: 18291
+Valid moved points: 7323
+Movement ratio: 0.4004
+Event density: 0.5963  (target: 0.05 to 0.20)
+Total points: 18358
+Valid moved points: 6745
+Movement ratio: 0.3674
+Event density: 0.5675  (target: 0.05 to 0.20)
+Total points: 18113
+Valid moved points: 6749
+Movement ratio: 0.3726
+Event density: 0.5305  (target: 0.05 to 0.20)
+Total points: 17940
+Valid moved points: 6548
+Movement ratio: 0.3650
+Event density: 0.5452  (target: 0.05 to 0.20)
+Total points: 17952
+Valid moved points: 6363
+Movement ratio: 0.3544
+Event density: 0.5251  (target: 0.05 to 0.20)
+Total points: 17881
+Valid moved points: 6536
+Movement ratio: 0.3655
+Event density: 0.5009  (target: 0.05 to 0.20)
+Total points: 17922
+Valid moved points: 5189
+Movement ratio: 0.2895
+Event density: 0.4940  (target: 0.05 to 0.20)
+Total points: 18202
+Valid moved points: 5028
+Movement ratio: 0.2762
+Event density: 0.4737  (target: 0.05 to 0.20)
+Total points: 18191
+Valid moved points: 5601
+Movement ratio: 0.3079
+Event density: 0.4557  (target: 0.05 to 0.20)
+Total points: 18211
+Valid moved points: 6167
+Movement ratio: 0.3386
+Event density: 0.4520  (target: 0.05 to 0.20)
+Total points: 18361
+Valid moved points: 6761
+Movement ratio: 0.3682
+Event density: 0.4689  (target: 0.05 to 0.20)
+Total points: 18721
+Valid moved points: 6569
+Movement ratio: 0.3509
+Event density: 0.4970  (target: 0.05 to 0.20)
+Total points: 19129
+Valid moved points: 6705
+Movement ratio: 0.3505
+Event density: 0.5460  (target: 0.05 to 0.20)
+Total points: 19257
+Valid moved points: 6967
+Movement ratio: 0.3618
+Event density: 0.5718  (target: 0.05 to 0.20)
+Total points: 19202
+Valid moved points: 6954
+Movement ratio: 0.3621
+Event density: 0.5910  (target: 0.05 to 0.20)
+Total points: 19216
+Valid moved points: 6470
+Movement ratio: 0.3367
+Event density: 0.5891  (target: 0.05 to 0.20)
+Total points: 19056
+Valid moved points: 5474
+Movement ratio: 0.2873
+Event density: 0.5823  (target: 0.05 to 0.20)
+Total points: 19107
+Valid moved points: 4681
+Movement ratio: 0.2450
+Event density: 0.5753  (target: 0.05 to 0.20)
+Total points: 19012

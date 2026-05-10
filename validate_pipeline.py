@@ -1192,6 +1192,14 @@ def _summarize_imu_results(imu_eas_list):
             "event_guided_eas_mean": None,
             "imu_improvement_pct_mean": None,
             "event_guided_improvement_pct_mean": None,
+            "imu_speas_before_mean": None,
+            "imu_speas_after_mean": None,
+            "imu_speas_improvement_pct_mean": None,
+            "imu_speas_n_frames": 0,
+            "imu_stereo_before_mean": None,
+            "imu_stereo_after_mean": None,
+            "imu_stereo_improvement_pct_mean": None,
+            "imu_stereo_n_frames": 0,
             "n_frames": 0,
         }
 
@@ -1215,6 +1223,63 @@ def _summarize_imu_results(imu_eas_list):
         and np.isfinite(r["event_guided_improvement_pct"])
     ]
 
+    speas_usable = [
+        r for r in usable
+        if r.get("imu_speas_after") is not None
+        and r.get("imu_speas_before") is not None
+    ]
+    if speas_usable:
+        imu_speas_before_mean = float(np.mean(
+            [r["imu_speas_before"] for r in speas_usable]
+        ))
+        imu_speas_after_mean = float(np.mean(
+            [r["imu_speas_after"] for r in speas_usable]
+        ))
+        imu_speas_pct_vals = [
+            float(r["imu_speas_improvement_pct"]) for r in speas_usable
+            if r.get("imu_speas_improvement_pct") is not None
+            and np.isfinite(r["imu_speas_improvement_pct"])
+        ]
+        imu_speas_pct_mean = (
+            float(np.mean(imu_speas_pct_vals))
+            if imu_speas_pct_vals else None
+        )
+        imu_speas_n = int(len(speas_usable))
+    else:
+        imu_speas_before_mean = None
+        imu_speas_after_mean = None
+        imu_speas_pct_mean = None
+        imu_speas_n = 0
+
+    stereo_usable = [
+        r for r in usable
+        if r.get("imu_stereo_after") is not None
+        and r.get("imu_stereo_before") is not None
+    ]
+    if stereo_usable:
+        imu_stereo_before_mean = float(np.mean(
+            [r["imu_stereo_before"] for r in stereo_usable]
+        ))
+        imu_stereo_after_mean = float(np.mean(
+            [r["imu_stereo_after"] for r in stereo_usable]
+        ))
+        imu_stereo_pct_vals = [
+            float(r["imu_stereo_improvement_pct"])
+            for r in stereo_usable
+            if r.get("imu_stereo_improvement_pct") is not None
+            and np.isfinite(r["imu_stereo_improvement_pct"])
+        ]
+        imu_stereo_pct_mean = (
+            float(np.mean(imu_stereo_pct_vals))
+            if imu_stereo_pct_vals else None
+        )
+        imu_stereo_n = int(len(stereo_usable))
+    else:
+        imu_stereo_before_mean = None
+        imu_stereo_after_mean = None
+        imu_stereo_pct_mean = None
+        imu_stereo_n = 0
+
     summary = {
         "original_eas_mean": float(np.mean(original)),
         "imu_eas_mean": float(np.mean(imu)),
@@ -1225,6 +1290,14 @@ def _summarize_imu_results(imu_eas_list):
         "event_guided_improvement_pct_mean": (
             float(np.mean(event_pct_vals)) if event_pct_vals else None
         ),
+        "imu_speas_before_mean": imu_speas_before_mean,
+        "imu_speas_after_mean": imu_speas_after_mean,
+        "imu_speas_improvement_pct_mean": imu_speas_pct_mean,
+        "imu_speas_n_frames": imu_speas_n,
+        "imu_stereo_before_mean": imu_stereo_before_mean,
+        "imu_stereo_after_mean": imu_stereo_after_mean,
+        "imu_stereo_improvement_pct_mean": imu_stereo_pct_mean,
+        "imu_stereo_n_frames": imu_stereo_n,
         "n_frames": int(n_frames),
     }
 
@@ -1249,6 +1322,32 @@ def _summarize_imu_results(imu_eas_list):
         )
     else:
         print("Event-Guided Imp. (%) : n/a")
+    if imu_speas_n > 0:
+        pct_str = (
+            f"{imu_speas_pct_mean:+.2f}"
+            if imu_speas_pct_mean is not None else "n/a"
+        )
+        print(
+            "IMU SPEAS             : "
+            f"{imu_speas_before_mean:.6f} -> "
+            f"{imu_speas_after_mean:.6f} ({pct_str}%, "
+            f"n={imu_speas_n})"
+        )
+    else:
+        print("IMU SPEAS             : n/a")
+    if imu_stereo_n > 0:
+        pct_str = (
+            f"{imu_stereo_pct_mean:+.2f}"
+            if imu_stereo_pct_mean is not None else "n/a"
+        )
+        print(
+            "IMU SRC (stereo)      : "
+            f"{imu_stereo_before_mean:.6f} -> "
+            f"{imu_stereo_after_mean:.6f} ({pct_str}%, "
+            f"n={imu_stereo_n})"
+        )
+    else:
+        print("IMU SRC (stereo)      : n/a")
     print("=" * 56)
     return summary
 
@@ -1453,6 +1552,11 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
             "imu_improvement_pct": None,
             "imu_event_guided_eas": None,
             "imu_event_guided_improvement_pct": None,
+            "imu_speas_after": None,
+            "imu_speas_improvement_pct": None,
+            "imu_stereo_after": None,
+            "imu_stereo_improvement_pct": None,
+            "imu_stereo_n_valid_after": None,
         }
 
         if speas_result is not None:
@@ -1463,6 +1567,9 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
                 speas_result["improvement_pct"]
             )
 
+        # Lift image_right outside the EG-stereo block so the IMU
+        # branch below can reuse it for IMU-baseline stereo consistency.
+        image_right = None
         if p_rect_right is not None:
             right_image_path = os.path.join(
                 right_image_dir, frame_t1_name + ".png"
@@ -1474,31 +1581,33 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
                     f"[Stereo] Warning: cannot load right image "
                     f"{right_image_path}: {exc}"
                 )
-            else:
-                stereo_result = compare_stereo_consistency(
-                    uv_before=motion_pair.original_t.uv,
-                    depth_before=motion_pair.original_t.depth,
-                    uv_after=motion_pair.corrected_uv,
-                    depth_after=motion_pair.corrected_depth,
-                    image_right_bgr=image_right,
-                    p_rect_left=p_rect,
-                    p_rect_right=p_rect_right,
-                )
-                stereo_results_full.append(stereo_result)
-                entry["stereo_before"] = float(stereo_result["score_before"])
-                entry["stereo_after"] = float(stereo_result["score_after"])
-                entry["stereo_improvement"] = float(
-                    stereo_result["improvement"]
-                )
-                entry["stereo_improvement_pct"] = _json_finite_or_none(
-                    stereo_result["improvement_pct"]
-                )
-                entry["stereo_n_valid_before"] = int(
-                    stereo_result["n_valid_before"]
-                )
-                entry["stereo_n_valid_after"] = int(
-                    stereo_result["n_valid_after"]
-                )
+                image_right = None
+
+        if image_right is not None:
+            stereo_result = compare_stereo_consistency(
+                uv_before=motion_pair.original_t.uv,
+                depth_before=motion_pair.original_t.depth,
+                uv_after=motion_pair.corrected_uv,
+                depth_after=motion_pair.corrected_depth,
+                image_right_bgr=image_right,
+                p_rect_left=p_rect,
+                p_rect_right=p_rect_right,
+            )
+            stereo_results_full.append(stereo_result)
+            entry["stereo_before"] = float(stereo_result["score_before"])
+            entry["stereo_after"] = float(stereo_result["score_after"])
+            entry["stereo_improvement"] = float(
+                stereo_result["improvement"]
+            )
+            entry["stereo_improvement_pct"] = _json_finite_or_none(
+                stereo_result["improvement_pct"]
+            )
+            entry["stereo_n_valid_before"] = int(
+                stereo_result["n_valid_before"]
+            )
+            entry["stereo_n_valid_after"] = int(
+                stereo_result["n_valid_after"]
+            )
 
         # ---- DGC (Depth Gradient Correlation) — flow-independent ----
         # Uses the source frame (image_t) for gradient comparison, per
@@ -1571,7 +1680,6 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
                     depth=frame_t.depth,
                     image_bgr=frame_t.image,
                 )
-                imu_results_full.append(imu_cmp)
                 entry["imu_eas"] = imu_cmp.get("imu_eas")
                 entry["imu_improvement_pct"] = imu_cmp.get(
                     "imu_improvement_pct"
@@ -1582,6 +1690,91 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
                 entry["imu_event_guided_improvement_pct"] = imu_cmp.get(
                     "event_guided_improvement_pct"
                 )
+
+                # SPEAS for the IMU baseline — same uv_before / image
+                # convention as the event-guided SPEAS, but with
+                # uv_after = uv_imu. IMU does not change point depths,
+                # so depth_after = frame_t.depth.
+                try:
+                    speas_imu_result = compare_speas(
+                        uv_before=frame_t.uv,
+                        depth_before=frame_t.depth,
+                        uv_after=uv_imu,
+                        depth_after=frame_t.depth,
+                        image_bgr=motion_pair.original_t1.image,
+                    )
+                except Exception as exc:
+                    print(
+                        f"[IMU/SPEAS] Warning: pair "
+                        f"{frame_t_name}->{frame_t1_name} failed: {exc}"
+                    )
+                    speas_imu_result = None
+                if speas_imu_result is not None:
+                    imu_cmp["imu_speas_before"] = float(
+                        speas_imu_result["score_before"]
+                    )
+                    imu_cmp["imu_speas_after"] = float(
+                        speas_imu_result["score_after"]
+                    )
+                    imu_cmp["imu_speas_improvement_pct"] = float(
+                        speas_imu_result["improvement_pct"]
+                    )
+                    entry["imu_speas_after"] = float(
+                        speas_imu_result["score_after"]
+                    )
+                    entry["imu_speas_improvement_pct"] = (
+                        _json_finite_or_none(
+                            speas_imu_result["improvement_pct"]
+                        )
+                    )
+
+                # SRC (stereo consistency) for the IMU baseline. Reuses
+                # the right image already loaded for the event-guided
+                # stereo comparison; runs only when stereo is available.
+                if image_right is not None:
+                    try:
+                        stereo_imu_result = compare_stereo_consistency(
+                            uv_before=frame_t.uv,
+                            depth_before=frame_t.depth,
+                            uv_after=uv_imu,
+                            depth_after=frame_t.depth,
+                            image_right_bgr=image_right,
+                            p_rect_left=p_rect,
+                            p_rect_right=p_rect_right,
+                        )
+                    except Exception as exc:
+                        print(
+                            f"[IMU/SRC] Warning: pair "
+                            f"{frame_t_name}->{frame_t1_name} failed: "
+                            f"{exc}"
+                        )
+                        stereo_imu_result = None
+                    if stereo_imu_result is not None:
+                        imu_cmp["imu_stereo_before"] = float(
+                            stereo_imu_result["score_before"]
+                        )
+                        imu_cmp["imu_stereo_after"] = float(
+                            stereo_imu_result["score_after"]
+                        )
+                        imu_cmp["imu_stereo_improvement_pct"] = float(
+                            stereo_imu_result["improvement_pct"]
+                        )
+                        imu_cmp["imu_stereo_n_valid_after"] = int(
+                            stereo_imu_result["n_valid_after"]
+                        )
+                        entry["imu_stereo_after"] = float(
+                            stereo_imu_result["score_after"]
+                        )
+                        entry["imu_stereo_improvement_pct"] = (
+                            _json_finite_or_none(
+                                stereo_imu_result["improvement_pct"]
+                            )
+                        )
+                        entry["imu_stereo_n_valid_after"] = int(
+                            stereo_imu_result["n_valid_after"]
+                        )
+
+                imu_results_full.append(imu_cmp)
             except (FileNotFoundError, ValueError, KeyError) as exc:
                 print(
                     f"[IMU] Warning: pair {frame_t_name}->{frame_t1_name} "
@@ -1718,6 +1911,30 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
             f"vs Event-Guided "
             f"{imu_summary['event_guided_eas_mean']:.6f} ({eg_pct_str})"
         )
+        if imu_summary.get("imu_speas_n_frames", 0) > 0:
+            imu_speas_pct = imu_summary["imu_speas_improvement_pct_mean"]
+            speas_pct_str = (
+                f"{imu_speas_pct:+.2f}%"
+                if imu_speas_pct is not None else "n/a"
+            )
+            print(
+                "IMU Baseline (SPEAS)          : "
+                f"{imu_summary['imu_speas_before_mean']:.6f} -> "
+                f"{imu_summary['imu_speas_after_mean']:.6f} "
+                f"({speas_pct_str})"
+            )
+        if imu_summary.get("imu_stereo_n_frames", 0) > 0:
+            imu_stereo_pct = imu_summary["imu_stereo_improvement_pct_mean"]
+            stereo_pct_str = (
+                f"{imu_stereo_pct:+.2f}%"
+                if imu_stereo_pct is not None else "n/a"
+            )
+            print(
+                "IMU Baseline (SRC)            : "
+                f"{imu_summary['imu_stereo_before_mean']:.6f} -> "
+                f"{imu_summary['imu_stereo_after_mean']:.6f} "
+                f"({stereo_pct_str})"
+            )
     else:
         print(
             "IMU Baseline (EAS)            : n/a (oxts unavailable)"
@@ -1815,6 +2032,30 @@ def run_validation_on_dataset(dataset_path, skip_imu=False):
             "imu_improvement_pct_mean": imu_summary[
                 "imu_improvement_pct_mean"
             ],
+            "imu_speas_before_mean": imu_summary.get(
+                "imu_speas_before_mean"
+            ),
+            "imu_speas_after_mean": imu_summary.get(
+                "imu_speas_after_mean"
+            ),
+            "imu_speas_improvement_pct_mean": imu_summary.get(
+                "imu_speas_improvement_pct_mean"
+            ),
+            "imu_speas_n_frames": imu_summary.get(
+                "imu_speas_n_frames", 0
+            ),
+            "imu_stereo_before_mean": imu_summary.get(
+                "imu_stereo_before_mean"
+            ),
+            "imu_stereo_after_mean": imu_summary.get(
+                "imu_stereo_after_mean"
+            ),
+            "imu_stereo_improvement_pct_mean": imu_summary.get(
+                "imu_stereo_improvement_pct_mean"
+            ),
+            "imu_stereo_n_frames": imu_summary.get(
+                "imu_stereo_n_frames", 0
+            ),
             "n_frames": imu_summary["n_frames"],
             "available": imu_summary["n_frames"] > 0,
         },

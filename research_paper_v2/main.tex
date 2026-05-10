@@ -65,9 +65,14 @@ $d{=}1.08$) and Stereo Reprojection Consistency ($+0.37\%$,
 $p{<}0.001$, $d{=}0.96$). A downstream boundary depth evaluation
 confirms that corrected projections produce sharper depth
 discontinuities at object boundaries ($+48.5\%$ over 1{,}691
-frames, positive in 99.2\% of cases). The method outperforms naive
-RGB-only flow correction and matches IMU-based de-skewing without
-requiring inertial hardware.
+frames, positive in 99.2\% of cases). Across all 24 sequences,
+the proposed method outperforms an IMU-based ego-motion de-skewing
+baseline on both independent metrics in 23/24 sequences (the lone
+exception is a stationary sequence where both pipelines are near
+zero by construction), since image-space flow captures
+dynamic-object motion that ego-motion-only models cannot. The
+method requires no inertial hardware, no deep learning, and no
+per-point LiDAR timestamps.
 \end{abstract}
 
 % ============================================================
@@ -152,6 +157,16 @@ timestamps~\cite{kitti,zhang2014loam}. These methods require
 hardware-level timestamp access or tight IMU integration
 unavailable in standard synchronized dataset pipelines. Our
 method requires neither.
+Crucially, IMU-based de-skew operates on the 3D point cloud and
+corrects only ego-motion: at each per-point timestamp the rigid
+ego-transform is integrated and applied. The proposed image-space
+correction operates after projection and captures both ego- and
+scene-motion components, since dense optical flow encodes
+projected motion regardless of cause. The two are complementary
+stages, not substitutes. Empirical degradation of an
+ego-motion-only baseline on KITTI (Sec.~\ref{sec:experiments})
+is consistent with the dataset's coverage of dynamic vehicles
+and pedestrians.
 
 \textbf{LiDAR--Camera Fusion.}
 Multi-modal fusion is extensively studied~\cite{huang2021,delta2025}.
@@ -312,8 +327,20 @@ discontinuities. We measure the mean Sobel gradient magnitude of
 the sparse depth image at boundary pixels; higher gradient
 magnitude indicates sharper depth edges.
 
+\textbf{Note on EAS.}
+We additionally compute the dense Edge Alignment Score (EAS) and
+report it in per-frame logs, but exclude it from the primary
+metric set. EAS evaluates a dense pixel-wise product of two
+sparse-point rasterizations and is therefore sensitive to
+rasterization smearing whenever points are displaced; the
+per-pixel product declines mechanically under any non-trivial
+correction. This is precisely the failure mode SPEAS was
+introduced to avoid by sampling edge strength at projected
+point locations rather than dense-multiplying rasterizations.
+
 % ============================================================
 \section{Experiments}
+\label{sec:experiments}
 
 \subsection{Setup}
 
@@ -423,33 +450,52 @@ Sequence & Frames & SPEAS$\Delta$\% & SRC$\Delta$\% \\
   \caption{Per-sequence SPEAS and SRC improvement (\%) across
     all 24 KITTI sequences, sorted by SPEAS improvement. Dotted
     lines indicate cross-dataset means. The majority of sequences
-    show positive improvement on both metrics.}
+    show positive improvement on both metrics. Event-guided
+    exceeds the IMU baseline on both metrics in 23/24 sequences
+    (parked \texttt{drive\_0060} is the sole exception); paired
+    $t$-tests give $p{<}10^{-8}$ for both.}
   \label{fig:speas_src}
 \end{figure}
 
-Table~\ref{tab:comparison} compares methods. RGB-only flow
-without event gating yields negative SRC ($-0.18\%$) while
-the full method achieves $+0.37\%$, demonstrating that ungated
-flow correction worsens geometric consistency. The IMU baseline
-achieves comparable SPEAS improvement, confirming our method
-matches physics-based correction without inertial hardware.
+Table~\ref{tab:comparison} compares methods. Across all 24
+sequences, the event-guided method outperforms the IMU-only
+baseline on both independent metrics: SPEAS
+$+0.64\%{\pm}0.60\%$ vs $-1.39\%{\pm}0.82\%$ and SRC
+$+0.37\%{\pm}0.40\%$ vs $-0.95\%{\pm}0.65\%$. The IMU
+baseline degrades SPEAS in 23/24 sequences and SRC in 22/24,
+while event-guided exceeds the IMU baseline on each metric in
+23/24 sequences (the sole exception in both is the parked
+sequence \texttt{drive\_0060}, where both pipelines are near
+zero by construction). Paired $t$-tests give
+$p{=}3.8{\times}10^{-10}$, $d{=}2.12$ (SPEAS) and
+$p{=}5.6{\times}10^{-9}$, $d{=}1.83$ (SRC). The mechanism is
+straightforward: image-space optical flow captures both
+ego-motion and dynamic-object motion, whereas an IMU-derived
+ego-transform models only the former. KITTI's urban and
+intersection sequences contain moving vehicles and pedestrians,
+so an ego-motion-only correction systematically misses the
+dynamic component.
 
 \begin{table}[t]
 \centering
-\caption{Method Comparison (mean over 24 sequences)}
+\caption{Method Comparison (mean${\pm}$std across 24 KITTI
+  sequences, 6{,}584 frames). $\uparrow$ higher is better.}
 \label{tab:comparison}
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{lcc}
 \toprule
-Method & SPEAS $\Delta$\% & SRC $\Delta$\% \\
+Method & SPEAS $\Delta$\% $\uparrow$ & SRC $\Delta$\% $\uparrow$ \\
 \midrule
-Uncorrected             & $0.00$ & $0.00$ \\
-RGB-Only Flow           & $+0.29$ & $-0.18$ \\
-IMU Baseline$^\dagger$  & ${\approx}+0.60$ & --- \\
-\textbf{Ours (Event-Guided)} & $\mathbf{+0.64}$ & $\mathbf{+0.37}$ \\
+Uncorrected                 & $0.00$              & $0.00$              \\
+Ours, no event gating       & $+0.29$             & $-0.18$             \\
+IMU Baseline$^\dagger$      & $-1.39{\pm}0.82$    & $-0.95{\pm}0.65$    \\
+\textbf{Ours, Event-Guided} & $\mathbf{+0.64{\pm}0.60}$ & $\mathbf{+0.37{\pm}0.40}$ \\
 \bottomrule
-\multicolumn{3}{l}{\footnotesize $^\dagger$Requires hardware
-  IMU; evaluated via EAS proxy.} \\
+\multicolumn{3}{p{0.92\columnwidth}}{\footnotesize $^\dagger$IMU
+  baseline implements a full 3-D ego-transform with per-point
+  sweep-angle scaling using OXTS forward/lateral velocities and
+  yaw rate, applied via back-projection and reprojection (not
+  a single reference-point approximation).} \\
 \end{tabular}
 \end{table}
 

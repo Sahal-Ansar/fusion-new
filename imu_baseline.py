@@ -225,13 +225,46 @@ def imu_deskew_projection(
     h, w = int(image_shape[0]), int(image_shape[1])
 
     az = np.arctan2(lidar_xyz[:, 1], lidar_xyz[:, 0])
-    temporal_ratio = ((az + np.pi) / (2.0 * np.pi)).astype(np.float32)
+    temporal_ratio = ((az + np.pi) / (2.0 * np.pi)).astype(np.float64)
 
-    du, dv = estimate_ego_displacement_px(oxts_t, oxts_t1, p_rect, dt)
+    # Full 3-D ego-motion compensation: back-project each point from
+    # (u, v, Z) to camera-frame (X, Y, Z), apply the proportional ego
+    # transform (translation + yaw), and re-project. Camera convention
+    # (KITTI rectified): vehicle +x -> cam +z (forward), vehicle +y ->
+    # cam -x (leftward), vehicle +z -> cam -y (up). World relative to
+    # camera therefore translates by (+vl*dt, 0, -vf*dt) per dt and
+    # rotates by +dyaw around camera +y, where dyaw = yaw_t1 - yaw_t.
+    fx = float(p_rect[0, 0])
+    fy = float(p_rect[1, 1])
+    cx = float(p_rect[0, 2])
+    cy = float(p_rect[1, 2])
+    vf = 0.5 * (float(oxts_t["vf"]) + float(oxts_t1["vf"]))
+    vl = 0.5 * (float(oxts_t["vl"]) + float(oxts_t1["vl"]))
+    dt_f = float(dt)
+    dyaw = float(oxts_t1["yaw"]) - float(oxts_t["yaw"])
+    dyaw = (dyaw + np.pi) % (2.0 * np.pi) - np.pi  # wrap to [-pi, pi]
+
     alpha = 0.5
+    f = temporal_ratio * alpha  # per-point fraction of full ego motion
 
-    u_new = uv[:, 0] + temporal_ratio * (np.float32(du) * np.float32(alpha))
-    v_new = uv[:, 1] + temporal_ratio * (np.float32(dv) * np.float32(alpha))
+    u = uv[:, 0].astype(np.float64)
+    v = uv[:, 1].astype(np.float64)
+    z = np.maximum(depth.astype(np.float64), 1.0)
+    x = (u - cx) * z / fx
+    y = (v - cy) * z / fy
+
+    theta = dyaw * f
+    cos_t = np.cos(theta)
+    sin_t = np.sin(theta)
+    tx = vl * dt_f * f
+    tz = -vf * dt_f * f
+    x_new = cos_t * x + sin_t * z + tx
+    z_new = -sin_t * x + cos_t * z + tz
+    y_new = y
+
+    z_new = np.where(z_new > 0.1, z_new, 0.1)
+    u_new = (fx * x_new / z_new + cx).astype(np.float32)
+    v_new = (fy * y_new / z_new + cy).astype(np.float32)
 
     u_new = np.clip(u_new, 0.0, float(w - 1))
     v_new = np.clip(v_new, 0.0, float(h - 1))
