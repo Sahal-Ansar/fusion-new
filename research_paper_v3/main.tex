@@ -28,9 +28,9 @@ Temporal Distortion in Autonomous Driving}
 
 \author{
 \IEEEauthorblockN{Sahal Ansar Theparambil}
-\IEEEauthorblockA{Department of Engineering\\
+\IEEEauthorblockA{Department of Computer Science Engineering\\
 Indian Institute of Information Technology Sri City, India\\
-sahalansar.t23@iiits.in}
+Email: sahalansar.t23@iiits.in}
 }
 
 \begin{document}
@@ -60,7 +60,7 @@ entirely in 2D image space, requires no deep learning, and runs at
 8.7~Hz on standard CPU hardware. Evaluated on 24 KITTI raw
 sequences spanning 6{,}584 frames and diverse driving conditions,
 the proposed approach achieves statistically significant improvements
-on two independent optical-flow-free metrics: Sparse-Point Edge
+on two optical-flow-free metrics: Sparse-Point Edge
 Alignment Score (SPEAS, $+0.64\%$, $p{<}0.001$, Cohen's
 $d{=}1.05$) and Stereo Reprojection Consistency ($+0.37\%$,
 $p{<}0.001$, $d{=}0.90$). A downstream boundary depth evaluation
@@ -68,7 +68,7 @@ confirms that corrected projections produce sharper depth
 discontinuities at object boundaries ($+48.5\%$ over 1{,}691
 frames, positive in 99.2\% of cases). Across all 24 sequences,
 the proposed method outperforms an IMU-based ego-motion de-skewing
-baseline on both independent metrics in 23/24 sequences (the lone
+baseline on both metrics in 23/24 sequences (the lone
 exception is a stationary sequence where both pipelines are near
 zero by construction), since image-space flow captures
 dynamic-object motion that ego-motion-only models cannot. The
@@ -114,9 +114,9 @@ direction of motion, skewing of vertical structures, and
 depth-dependent spatial drift.
 
 Existing approaches require either IMU-based ego-motion
-integration~\cite{loam}, hardware-level timestamp access, or
-deep learning architectures~\cite{delta2025,huang2021} that
-sacrifice interpretability and require GPU inference. Classical,
+integration~\cite{kitti,zhang2014loam}, hardware-level timestamp
+access, or deep learning architectures~\cite{delta2025,huang2021}
+that sacrifice interpretability and require GPU inference. Classical,
 software-only alternatives operating directly on standard
 synchronized datasets remain underexplored.
 
@@ -136,7 +136,7 @@ activity.
     smoothing---requiring no deep learning, no IMU, and no
     hardware modification.
   \item Large-scale validation on 24 KITTI sequences (6{,}584
-    frames) with two independent optical-flow-free metrics, both
+    frames) with two optical-flow-free metrics, both
     showing statistically significant improvement ($p{<}0.001$,
     Cohen's $d{>}0.90$).
   \item A downstream boundary depth evaluation demonstrating
@@ -302,10 +302,11 @@ factor. We avoid a closed-form half-sweep derivation: the KITTI
 \texttt{\_sync} pipeline already interpolates Velodyne returns to
 the camera trigger time~\cite{kitti}, so the residual per-point
 offset is neither uniform across the sweep nor centred at
-$T_{sweep}/2$. The choice $\alpha_t{=}0.5$ is instead supported
-by the ablation in Table~\ref{tab:ablation}: $\alpha{=}0.25$
-underperforms on both metrics, while $\alpha{=}0.75$ regresses
-below the uncorrected baseline on both. Correction is applied only where
+$T_{sweep}/2$. The choice $\alpha_t{=}0.5$ is supported
+by the ablation in Table~\ref{tab:ablation}, where
+$\alpha{=}0.75$ regresses below the uncorrected baseline on both
+metrics; $\alpha{=}0.5$ is retained as a stable mid-range
+setting. Correction is applied only where
 $0.5 {<} \|F\| {<} 30.0$~px: the lower bound filters stationary
 pixels; the upper bound rejects flow failures at occlusion
 boundaries.
@@ -313,7 +314,7 @@ boundaries.
 % ============================================================
 \section{Evaluation Metrics}
 
-We use three independent, optical-flow-free metrics to avoid
+We use three optical-flow-free metrics to avoid
 the self-referential bias of flow-based consistency measures.
 
 \textbf{Sparse-Point Edge Alignment Score (SPEAS).}
@@ -496,7 +497,7 @@ Sequence & Frames & SPEAS$\Delta$\% & SRC$\Delta$\% \\
 
 Table~\ref{tab:comparison} compares methods. Across all 24
 sequences, the event-guided method outperforms the IMU-only
-baseline on both independent metrics: SPEAS
+baseline on both metrics: SPEAS
 $+0.64\%{\pm}0.60\%$ vs $-1.39\%{\pm}0.82\%$ and SRC
 $+0.37\%{\pm}0.40\%$ vs $-0.95\%{\pm}0.65\%$. The IMU
 baseline degrades SPEAS in 23/24 sequences and SRC in 22/24,
@@ -611,15 +612,30 @@ Seq. & Frames & Before & After & $\Delta$\% \\
 Table~\ref{tab:ablation} and Fig.~\ref{fig:ablation} present
 ablation results on \texttt{drive\_0009\_sync} (frames 6--105,
 post-EMA-warmup).
-Three findings are notable. First, RGB-only flow without event
-gating yields negative SRC ($-0.18\%$) while the full method
-is positive ($+0.28\%$), demonstrating that the event
-confidence mask is essential. Second, $\alpha{=}0.5$ is
-clearly optimal: $\alpha{=}0.25$ underperforms and
-$\alpha{=}0.75$ produces negative improvements on both metrics,
-confirming the empirical sweet spot used throughout the paper.
-Third, flow magnitude bounds contribute $+0.09\%$
-SPEAS by rejecting flow failures at occlusion boundaries.
+The decisive finding concerns event gating: RGB-only flow
+without gating yields negative SRC ($-0.18\%$), whereas the
+gated full method keeps SRC positive ($+0.28\%$). Because SRC
+is the flow-independent metric, this sign flip is the clearest
+evidence that the event confidence mask prevents the correction
+from degrading stereo geometric consistency. The temporal-offset
+sweep is similarly clear at its upper end: $\alpha{=}0.75$
+regresses both metrics below the uncorrected baseline
+($-0.07\%$ SPEAS, $-0.20\%$ SRC), so $\alpha{=}0.5$ is retained
+as a stable mid-range setting. We caution against
+over-interpreting the sub-$0.2\%$ differences among the
+remaining gated configurations: on this 100-frame
+single-sequence subset, some ablated variants score marginally
+above the full method on individual metrics (e.g., No Edge
+Spatial Filter, $+0.63\%/+0.29\%$), but these gaps are smaller
+than the cross-sequence standard deviations of $\pm0.60\%$
+(SPEAS) and $\pm0.40\%$ (SRC) reported in Table~\ref{tab:main}
+and are not stable indicators of component value. The role of
+the ablation is to confirm the sign and direction of each
+component's effect rather than to rank configurations at
+sub-$0.1\%$ resolution; the most consequential choice---event
+gating---is independently corroborated at scale in
+Table~\ref{tab:comparison}, where the ungated variant degrades
+SRC across all 24 sequences.
 
 \begin{table}[t]
 \centering
@@ -647,10 +663,11 @@ $\alpha{=}0.75$             & $-0.07$ & $-0.20$ \\
 \begin{figure}[!htbp]
   \centerline{\includegraphics[width=0.95\columnwidth]{fig_ablation.png}}
   \caption{Ablation study results. RGB-only flow (no event
-    gating) worsens SRC ($-0.18\%$). $\alpha{=}0.75$ degrades
-    both metrics, confirming the empirically tuned
-    $\alpha{=}0.5$ as the operating point. The full method
-    achieves the best balance across both metrics.}
+    gating) worsens SRC ($-0.18\%$), and $\alpha{=}0.75$
+    degrades both metrics; $\alpha{=}0.5$ is retained as the
+    operating point. Differences among the remaining gated
+    configurations fall within the cross-sequence variance
+    reported in Table~\ref{tab:main}.}
   \label{fig:ablation}
 \end{figure}
 
@@ -664,30 +681,36 @@ $\alpha{=}0.75$             & $-0.07$ & $-0.20$ \\
 \setlength{\tabcolsep}{3pt}
 \begin{tabular}{lrr}
 \toprule
-Stage & Mean (ms) & \% Total \\
+Stage & Mean (ms) & Share (\%) \\
 \midrule
-Farneback Flow      & $99.2 \pm 3.5$ & 86.7\% \\
-Event Simulation    & $13.7 \pm 2.0$ & 12.0\% \\
-Temporal Smoothing  & $ 7.0 \pm 1.0$ &  6.1\% \\
-Motion Compensation & $ 2.8 \pm 0.3$ &  2.5\% \\
+Farneback Flow      & $99.2 \pm 3.5$ & 80.6\% \\
+Event Simulation    & $13.7 \pm 2.0$ & 11.1\% \\
+Temporal Smoothing  & $ 7.0 \pm 1.0$ &  5.7\% \\
+Motion Compensation & $ 2.8 \pm 0.3$ &  2.3\% \\
 Event Confidence    & $ 0.4 \pm 0.0$ &  0.3\% \\
 \midrule
 \textbf{Total}      & $\mathbf{114.5 \pm 3.4}$ & \textbf{8.7 Hz} \\
 \bottomrule
+\multicolumn{3}{p{0.92\columnwidth}}{\footnotesize Stages are
+  timed independently and may overlap; the Share column gives
+  each stage as a fraction of summed stage time. The Total row
+  reports end-to-end wall-clock time, which is shorter than the
+  summed stage time owing to this overlap.} \\
 \end{tabular}
 \end{table}
 
 As shown in Table~\ref{tab:runtime}, the total pipeline runs at
 114.5~ms per frame pair (8.7~Hz) on CPU only (20 repeated
 measurements), approaching real-time for 10~Hz LiDAR. Farneback
-optical flow dominates at 86.7\% of total cost; event simulation
-and motion compensation contribute minimally. Replacing Farneback
-with a GPU flow estimator would achieve real-time operation.
+optical flow dominates the runtime at 99.2~ms per frame pair, by
+far the largest single stage; event simulation and motion
+compensation contribute minimally. Replacing Farneback with a
+GPU flow estimator would achieve real-time operation.
 
 % ============================================================
 \section{Limitations}
 
-\textbf{Simulated events.} The log-intensity difference
+\textbf{Simulated events:} The log-intensity difference
 approximates DVS behavior but does not replicate microsecond
 temporal resolution or per-pixel refractory period of real
 event cameras. Event density on fast-motion frames remains
@@ -695,7 +718,7 @@ higher than physical DVS output, though the gating mechanism
 retains effectiveness across the observed density range
 (7--41\%).
 
-\textbf{Temporal offset approximation.} The correction scale
+\textbf{Temporal offset approximation:} The correction scale
 $\alpha{=}0.5$ is selected empirically (Table~\ref{tab:ablation})
 rather than derived from a fixed half-sweep model: the KITTI
 \texttt{\_sync} stream already interpolates LiDAR returns toward
@@ -704,15 +727,15 @@ varies with scan angle and ego-motion in a way a single scalar
 cannot capture. A principled per-point correction would require
 raw, pre-sync LiDAR timestamps.
 
-\textbf{Image-space only.} The correction is applied in 2D
+\textbf{Image-space only:} The correction is applied in 2D
 image space and does not modify underlying 3D point cloud
 geometry. Downstream tasks requiring metrically consistent 3D
 structure would benefit from extending the correction to 3D
 via depth-preserved unprojection.
 
-\textbf{Processing rate.} At 8.7~Hz the pipeline runs below
+\textbf{Processing rate:} At 8.7~Hz the pipeline runs below
 the 10~Hz LiDAR rate on a standard CPU. The bottleneck
-(Farneback flow, 86.7\% of runtime) is well-suited to GPU
+(Farneback flow, 99.2~ms per frame pair) is well-suited to GPU
 acceleration.
 
 % ============================================================
@@ -730,11 +753,11 @@ across frames.
 
 Evaluated on 24 KITTI raw sequences (6{,}584 frames), the
 approach achieves statistically significant improvements on
-two independent flow-free metrics ($p{<}0.001$, Cohen's
+two flow-free metrics ($p{<}0.001$, Cohen's
 $d{>}0.90$) and demonstrates $+48.5\%$ improvement in
 boundary depth sharpness in a downstream evaluation.
 The method outperforms an IMU-based ego-motion de-skewing
-baseline on both independent metrics in 23 of 24 sequences,
+baseline on both metrics in 23 of 24 sequences,
 outperforms naive RGB-only flow correction which degrades
 stereo geometric consistency, and requires no inertial
 hardware, no deep learning, no hardware modification, and no

@@ -49,53 +49,106 @@ def _save(fig, filename: str) -> str:
 # =======================================================================
 
 def figure_1_speas_src_improvement() -> str:
-    """Per-sequence SPEAS and SRC improvement, sorted by SPEAS desc."""
+    """Per-sequence SPEAS / SRC improvement: event-guided vs IMU baseline.
+
+    Four bars per sequence (EG-SPEAS, IMU-SPEAS, EG-SRC, IMU-SRC) so a
+    reader of Section V-C can scan the event-guided vs IMU comparison
+    for both metrics on a single row. Sorted by EG-SPEAS descending.
+    Saturated colors (steelblue, darkorange) mark our event-guided
+    results; lighter pair-mates (lightblue, peachpuff) mark the IMU
+    baseline — the saturation gradient visually encodes "ours vs base".
+    """
+    # seq, EG-SPEAS%, IMU-SPEAS%, EG-SRC%, IMU-SRC%
     data = [
-        ("0001", +0.03, +0.25), ("0002", +0.93, +0.24),
-        ("0005", +0.81, +1.27), ("0009", +0.89, +0.80),
-        ("0011", +0.30, +0.48), ("0013", -0.00, +0.17),
-        ("0014", -0.01, +0.24), ("0017", +0.09, +0.05),
-        ("0018", -0.03, +0.23), ("0048", -0.01, +0.15),
-        ("0051", +0.34, +0.16), ("0056", +0.32, -0.22),
-        ("0057", +0.25, +0.04), ("0059", +0.62, +0.50),
-        ("0060", -0.07, -0.02), ("0084", +0.72, -0.04),
-        ("0091", +1.69, +0.67), ("0093", +1.72, +1.46),
-        ("0095", +0.90, +0.38), ("0096", +0.73, +0.53),
-        ("0104", +0.73, -0.21), ("0106", +1.21, +0.58),
-        ("0113", +2.08, +0.57), ("0117", +1.17, +0.67),
+        ("0001", +0.03, -1.78, +0.25, -0.69),
+        ("0002", +0.93, -2.34, +0.24, -1.16),
+        ("0005", +0.81, -1.31, +1.27, -0.90),
+        ("0009", +0.89, -1.56, +0.80, -1.33),
+        ("0011", +0.30, -1.00, +0.48, -0.57),
+        ("0013", -0.00, -2.56, +0.17, -1.63),
+        ("0014", -0.01, -2.73, +0.24, -2.58),
+        ("0017", +0.09, -0.00, +0.05, +0.00),
+        ("0018", -0.03, -0.35, +0.23, -0.24),
+        ("0048", -0.01, -2.16, +0.15, -1.62),
+        ("0051", +0.34, -1.33, +0.16, -1.15),
+        ("0056", +0.32, -2.66, -0.22, -1.97),
+        ("0057", +0.25, -0.27, +0.04, -0.23),
+        ("0059", +0.62, -1.17, +0.50, -0.90),
+        ("0060", -0.07, +0.02, -0.02, +0.00),
+        ("0084", +0.72, -1.30, -0.04, -0.89),
+        ("0091", +1.69, -1.35, +0.67, -0.40),
+        ("0093", +1.72, -0.89, +1.46, -0.76),
+        ("0095", +0.90, -2.21, +0.38, -1.65),
+        ("0096", +0.73, -1.79, +0.52, -1.31),
+        ("0104", +0.73, -1.88, -0.21, -1.36),
+        ("0106", +1.21, -1.29, +0.58, -0.62),
+        ("0113", +2.08, -0.37, +0.57, -0.16),
+        ("0117", +1.17, -1.11, +0.67, -0.68),
     ]
     data = sorted(data, key=lambda r: r[1], reverse=True)
 
     seqs = [d[0] for d in data]
-    speas = np.array([d[1] for d in data])
-    src = np.array([d[2] for d in data])
+    eg_speas = np.array([d[1] for d in data])
+    imu_speas = np.array([d[2] for d in data])
+    eg_src = np.array([d[3] for d in data])
+    imu_src = np.array([d[4] for d in data])
 
-    speas_mean = float(np.mean(speas))
-    src_mean = float(np.mean(src))
+    # Cross-dataset means (provided — match Table II row aggregates).
+    eg_speas_mean = +0.64
+    imu_speas_mean = -1.39
+    eg_src_mean = +0.37
+    imu_src_mean = -0.95
 
-    fig, ax = plt.subplots(figsize=(IEEE_COLUMN_WIDTH, 5.5))
+    fig, ax = plt.subplots(figsize=(IEEE_COLUMN_WIDTH, 8.5))
 
-    y = np.arange(len(seqs))
-    h = 0.4
-    ax.barh(y - h / 2, speas, h, color="steelblue", label="SPEAS", zorder=2)
-    ax.barh(y + h / 2, src, h, color="darkorange", label="SRC", zorder=2)
+    # Group spacing 1.6 > bar block 0.88 → ~45% whitespace between groups
+    # so the eye reads each sequence as a distinct block.
+    group_centers = np.arange(len(seqs)) * 1.6
+    bar_h = 0.22
+    intra_offsets = np.array([-1.5, -0.5, +0.5, +1.5]) * bar_h
+
+    ax.barh(group_centers + intra_offsets[0], eg_speas,  bar_h,
+            color="steelblue",  linewidth=0.0, label="EG-SPEAS (ours)", zorder=2)
+    ax.barh(group_centers + intra_offsets[1], imu_speas, bar_h,
+            color="lightblue",  linewidth=0.0, label="IMU-SPEAS", zorder=2)
+    ax.barh(group_centers + intra_offsets[2], eg_src,    bar_h,
+            color="darkorange", linewidth=0.0, label="EG-SRC (ours)", zorder=2)
+    ax.barh(group_centers + intra_offsets[3], imu_src,   bar_h,
+            color="peachpuff",  linewidth=0.0, label="IMU-SRC", zorder=2)
+
+    # Faint separators midway between adjacent group centers.
+    for c in group_centers[:-1]:
+        ax.axhline(c + 0.8, color="gray", linewidth=0.3, alpha=0.25, zorder=0)
 
     ax.axvline(0.0, color="black", linestyle="--", linewidth=0.8, alpha=0.6, zorder=1)
-    ax.axvline(
-        speas_mean, color="steelblue", linestyle=":", linewidth=1.0, alpha=0.85,
-        label=f"SPEAS mean ({speas_mean:+.2f}%)", zorder=3,
-    )
-    ax.axvline(
-        src_mean, color="darkorange", linestyle=":", linewidth=1.0, alpha=0.85,
-        label=f"SRC mean ({src_mean:+.2f}%)", zorder=3,
-    )
+    ax.axvline(eg_speas_mean,  color="steelblue",
+               linestyle=":", linewidth=1.1, alpha=0.95, zorder=3)
+    ax.axvline(imu_speas_mean, color="steelblue",
+               linestyle=":", linewidth=1.1, alpha=0.55, zorder=3)
+    ax.axvline(eg_src_mean,    color="darkorange",
+               linestyle=":", linewidth=1.1, alpha=0.95, zorder=3)
+    ax.axvline(imu_src_mean,   color="darkorange",
+               linestyle=":", linewidth=1.1, alpha=0.55, zorder=3)
 
-    ax.set_yticks(y)
+    # Annotate the four means at the top of the plot so the dotted lines
+    # are decodable without bloating the legend to 8 entries.
+    ymin = group_centers.min() - 2.0
+    for xv, txt, col in [
+        (eg_speas_mean,  f"EG μ={eg_speas_mean:+.2f}",  "steelblue"),
+        (imu_speas_mean, f"IMU μ={imu_speas_mean:+.2f}", "steelblue"),
+        (eg_src_mean,    f"EG μ={eg_src_mean:+.2f}",    "darkorange"),
+        (imu_src_mean,   f"IMU μ={imu_src_mean:+.2f}",  "darkorange"),
+    ]:
+        ax.text(xv, ymin, txt, color=col, fontsize=5.5,
+                ha="center", va="bottom", rotation=90, alpha=0.9)
+
+    ax.set_yticks(group_centers)
     ax.set_yticklabels(seqs, fontsize=7)
-    ax.invert_yaxis()           # highest SPEAS at the top
+    ax.invert_yaxis()           # highest EG-SPEAS at the top
     ax.set_xlabel("Improvement (%)")
     ax.set_ylabel("Sequence")
-    ax.legend(loc="upper right", fontsize=6, framealpha=0.9)
+    ax.legend(loc="lower right", fontsize=6, framealpha=0.9, ncol=2,
+              handlelength=1.4, columnspacing=0.8, handletextpad=0.4)
     ax.grid(axis="x", linestyle=":", linewidth=0.4, alpha=0.4)
     _despine(ax)
 
